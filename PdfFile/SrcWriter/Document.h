@@ -64,6 +64,7 @@ namespace PdfWriter
 	class CPage;
 	class CInfoDict;
 	class CDictObject;
+	class CObjectBase;
 	class CEncryptDict;
 	class CSignatureDict;
 	class CStream;
@@ -108,6 +109,7 @@ namespace PdfWriter
 		bool              SaveToFile(const std::wstring& wsPath);
 		bool              SaveToMemory(BYTE** pData, int* pLength);
 		void              DeduplicateResourceStreams();
+		void              DeduplicateImagesBySize();
 		bool              SaveNewWithPassword(CXref* pXref, CXref* _pXref, const std::wstring& wsPath, const std::wstring& wsOwnerPassword, const std::wstring& wsUserPassword, CDictObject* pTrailer);
 			              
         void              SetPasswords(const std::wstring & wsOwnerPassword, const std::wstring & wsUserPassword);
@@ -175,6 +177,7 @@ namespace PdfWriter
 		bool              HasImage(const std::wstring& wsImagePath, BYTE nAlpha);
 		CImageDict*       GetImage(const std::wstring& wsImagePath, BYTE nAlpha);
 		void              AddImage(const std::wstring& wsImagePath, BYTE nAlpha, CImageDict* pImage);
+		CObjectBase*      FindExistingImage(unsigned int unWidth, unsigned int unHeight);
 		CImageDict*       GetCurImage() { return m_pCurImage; }
 		void              SetCurImage(CImageDict* pImage) { m_pCurImage = pImage; }
 					  

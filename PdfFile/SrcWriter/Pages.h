@@ -182,7 +182,7 @@ namespace PdfWriter
 
 		void      ExecuteXObject(CXObject* pXObject);
 		void      ExecuteXObject(const char* sXObjectName);
-		void      DrawImage(CImageDict* pImage, double dX, double dY, double dWidth, double dHeight);
+		void      DrawImage(CObjectBase* pImage, double dX, double dY, double dWidth, double dHeight);
 		void      SetPatternColorSpace(CImageTilePattern* pPattern);
 		void      SetFilter(unsigned int unFiler);
 		CMatrix*  GetTransform();

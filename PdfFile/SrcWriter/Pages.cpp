@@ -1501,11 +1501,15 @@ namespace PdfWriter
 		m_pStream->WriteEscapeName(sXObjectName);
 		m_pStream->WriteStr(" Do\012");
 	}
-    void CPage::DrawImage(CImageDict* pImage, double dX, double dY, double dWidth, double dHeight)
+    void CPage::DrawImage(CObjectBase* pImage, double dX, double dY, double dWidth, double dHeight)
 	{
+		if (!pImage)
+			return;
 		GrSave();
 		Concat(dWidth, 0, 0, dHeight, dX, dY);
-		ExecuteXObject(pImage);
+		CResourcesDict* pResources = GetResourcesItem();
+		if (pResources)
+			ExecuteXObject(pResources->GetXObjectName(pImage));
 		GrRestore();
 	}
     void CPage::DrawShading(CShading* pShading)

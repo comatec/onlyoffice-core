@@ -3362,6 +3362,21 @@ PdfWriter::CImageDict* CPdfWriter::LoadImage(Aggplus::CImage* pImage, BYTE nAlph
 }
 PdfWriter::CImageDict* CPdfWriter::DrawImage(Aggplus::CImage* pImage, const double& dX, const double& dY, const double& dW, const double& dH, const BYTE& nAlpha)
 {
+	if (!pImage)
+		return NULL;
+
+	unsigned int unW = (unsigned int)abs((int)pImage->GetWidth());
+	unsigned int unH = (unsigned int)abs((int)pImage->GetHeight());
+	PdfWriter::CObjectBase* pExisting = m_pDocument->FindExistingImage(unW, unH);
+	if (pExisting)
+	{
+		m_pPage->GrSave();
+		UpdateTransform();
+		m_pPage->DrawImage(pExisting, MM_2_PT(dX), MM_2_PT(m_dPageHeight - dY - dH), MM_2_PT(dW), MM_2_PT(dH));
+		m_pPage->GrRestore();
+		return NULL;
+	}
+
 	PdfWriter::CImageDict* pPdfImage = LoadImage(pImage, nAlpha);
 	if (!pPdfImage)
 		return NULL;

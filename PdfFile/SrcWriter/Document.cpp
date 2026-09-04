@@ -57,6 +57,8 @@
 
 #include "Objects.h"
 #include <map>
+#include <utility>
+#include <vector>
 #include <cstring>
 #include "../../OfficeUtils/src/zlib-1.2.11/zlib.h"
 
@@ -278,6 +280,26 @@ namespace PdfWriter
 		}
 		return false;
 	}
+	// 1 = embedded font file, 2 = image XObject. 0 = do not merge (page contents, Form, etc.).
+	static int StreamMergeKind(CDictObject* pDict)
+	{
+		if (pDict->GetDictType() == dict_type_PAGE || pDict->GetDictType() == dict_type_PAGES)
+			return 0;
+		CObjectBase* pSubtype = pDict->Get("Subtype");
+		if (pSubtype && pSubtype->GetType() == object_type_NAME)
+		{
+			const char* sName = ((CNameObject*)pSubtype)->Get();
+			if (0 == strcmp(sName, "Form"))
+				return 0;
+			if (0 == strcmp(sName, "Image"))
+				return 2;
+			if (0 == strcmp(sName, "CIDFontType0C"))
+				return 1;
+		}
+		if (pDict->Get("Length1"))
+			return 1;
+		return 0;
+	}
 	static bool StreamFingerprint(CDictObject* pDict, unsigned int& unCrc, unsigned int& unSize)
 	{
 		CStream* pStream = pDict->GetStream();
@@ -289,26 +311,7 @@ namespace PdfWriter
 		if (!pBuf || unRaw < 2048)
 			return false;
 
-		bool bMerge = false;
-		CObjectBase* pSubtype = pDict->Get("Subtype");
-		CObjectBase* pType = pDict->Get("Type");
 		CObjectBase* pLength1 = pDict->Get("Length1");
-		if (pLength1)
-			bMerge = true;
-		if (pSubtype && pSubtype->GetType() == object_type_NAME)
-		{
-			const char* sName = ((CNameObject*)pSubtype)->Get();
-			if (0 == strcmp(sName, "Image") || 0 == strcmp(sName, "CIDFontType0C"))
-				bMerge = true;
-		}
-		if (pType && pType->GetType() == object_type_NAME
-			&& 0 == strcmp(((CNameObject*)pType)->Get(), "XObject"))
-			bMerge = true;
-		if (unRaw >= 8192)
-			bMerge = true;
-		if (!bMerge)
-			return false;
-
 		if (StreamIsFlate(pDict))
 		{
 			unsigned int unGuess = unRaw * 16;
@@ -339,7 +342,7 @@ namespace PdfWriter
 		if (!m_pXref)
 			return;
 
-		std::map<unsigned long long, CObjectBase*> mKeep;
+		std::map<std::pair<int, unsigned long long>, CObjectBase*> mKeep;
 		int nCount = m_pXref->GetCount();
 		for (int nIndex = 0; nIndex < nCount; ++nIndex)
 		{
@@ -349,10 +352,99 @@ namespace PdfWriter
 			if (pEntry->pObject->GetType() != object_type_DICT)
 				continue;
 			CDictObject* pDict = (CDictObject*)pEntry->pObject;
+			int nKind = StreamMergeKind(pDict);
+			if (nKind == 0)
+				continue;
 			unsigned int unCrc = 0, unSize = 0;
 			if (!StreamFingerprint(pDict, unCrc, unSize))
 				continue;
-			unsigned long long nKey = ((unsigned long long)unCrc << 32) | unSize;
+			unsigned long long nHash = ((unsigned long long)unCrc << 32) | unSize;
+			std::pair<int, unsigned long long> oKey(nKind, nHash);
+			std::map<std::pair<int, unsigned long long>, CObjectBase*>::iterator it = mKeep.find(oKey);
+			if (it == mKeep.end())
+			{
+				mKeep[oKey] = pEntry->pObject;
+				continue;
+			}
+			if (it->second == pEntry->pObject)
+				continue;
+
+			std::vector<CProxyObject*> vRefs = pEntry->pRefObj;
+			for (size_t i = 0; i < vRefs.size(); ++i)
+			{
+				if (vRefs[i])
+					vRefs[i]->Set(it->second);
+			}
+			pEntry->nEntryType = 'f';
+		}
+	}
+	static unsigned int ImageDim(CDictObject* pDict, const char* sKey)
+	{
+		CObjectBase* pObj = pDict->Get(sKey);
+		if (!pObj)
+			return 0;
+		if (pObj->GetType() == object_type_PROXY)
+			pObj = ((CProxyObject*)pObj)->Get();
+		if (!pObj)
+			return 0;
+		if (pObj->GetType() == object_type_NUMBER)
+			return (unsigned int)((CNumberObject*)pObj)->Get();
+		if (pObj->GetType() == object_type_REAL)
+			return (unsigned int)((CRealObject*)pObj)->Get();
+		return 0;
+	}
+	void CDocument::DeduplicateImagesBySize()
+	{
+		if (!m_pXref)
+			return;
+
+		std::vector<CObjectBase*> vSMask;
+		int nCount = m_pXref->GetCount();
+		for (int nIndex = 0; nIndex < nCount; ++nIndex)
+		{
+			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
+			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
+				continue;
+			if (pEntry->pObject->GetType() != object_type_DICT)
+				continue;
+			CObjectBase* pSMask = ((CDictObject*)pEntry->pObject)->Get("SMask");
+			if (!pSMask)
+				continue;
+			if (pSMask->GetType() == object_type_PROXY)
+				pSMask = ((CProxyObject*)pSMask)->Get();
+			if (pSMask)
+				vSMask.push_back(pSMask);
+		}
+
+		std::map<unsigned long long, CObjectBase*> mKeep;
+		for (int nIndex = 0; nIndex < nCount; ++nIndex)
+		{
+			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
+			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
+				continue;
+			if (pEntry->pObject->GetType() != object_type_DICT)
+				continue;
+			CDictObject* pDict = (CDictObject*)pEntry->pObject;
+			if (StreamMergeKind(pDict) != 2)
+				continue;
+			if (pDict->Get("ImageMask"))
+				continue;
+			bool bSMask = false;
+			for (size_t i = 0; i < vSMask.size(); ++i)
+			{
+				if (vSMask[i] == pEntry->pObject)
+				{
+					bSMask = true;
+					break;
+				}
+			}
+			if (bSMask)
+				continue;
+			unsigned int unW = ImageDim(pDict, "Width");
+			unsigned int unH = ImageDim(pDict, "Height");
+			if (unW < 1 || unH < 1)
+				continue;
+			unsigned long long nKey = ((unsigned long long)unW << 32) | unH;
 			std::map<unsigned long long, CObjectBase*>::iterator it = mKeep.find(nKey);
 			if (it == mKeep.end())
 			{
@@ -361,7 +453,6 @@ namespace PdfWriter
 			}
 			if (it->second == pEntry->pObject)
 				continue;
-
 			std::vector<CProxyObject*> vRefs = pEntry->pRefObj;
 			for (size_t i = 0; i < vRefs.size(); ++i)
 			{
@@ -381,11 +472,17 @@ namespace PdfWriter
 			for (int nIndex = 0; nIndex < nCount; ++nIndex)
 			{
 				TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
-				if (pEntry && pEntry->nEntryType == 'n' && pEntry->pObject
-					&& pEntry->pObject->GetType() == object_type_DICT)
-					((CDictObject*)pEntry->pObject)->BeforeWrite();
+				if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
+					continue;
+				if (pEntry->pObject->GetType() != object_type_DICT)
+					continue;
+				CDictObject* pDict = (CDictObject*)pEntry->pObject;
+				// Only emit font file streams before dedup. Do not run CPage::BeforeWrite here.
+				if (pDict->GetDictType() == dict_type_FONT)
+					pDict->BeforeWrite();
 			}
 			DeduplicateResourceStreams();
+			DeduplicateImagesBySize();
 		}
 
 		// Пишем заголовок
@@ -1447,6 +1544,75 @@ namespace PdfWriter
 			return;
 		m_pCurImage = pImage;
 		m_vImages.push_back({wsImagePath, nAlpha, pImage});
+	}
+	static unsigned int DictUInt(CDictObject* pDict, const char* sKey)
+	{
+		CObjectBase* pObj = pDict->Get(sKey);
+		if (!pObj)
+			return 0;
+		if (pObj->GetType() == object_type_NUMBER)
+			return (unsigned int)((CNumberObject*)pObj)->Get();
+		if (pObj->GetType() == object_type_REAL)
+			return (unsigned int)((CRealObject*)pObj)->Get();
+		return 0;
+	}
+	CObjectBase* CDocument::FindExistingImage(unsigned int unWidth, unsigned int unHeight)
+	{
+		if (!m_pXref || unWidth < 1 || unHeight < 1)
+			return NULL;
+
+		std::vector<CObjectBase*> vSMask;
+		int nCount = m_pXref->GetCount();
+		for (int nIndex = 0; nIndex < nCount; ++nIndex)
+		{
+			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
+			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
+				continue;
+			if (pEntry->pObject->GetType() != object_type_DICT)
+				continue;
+			CDictObject* pDict = (CDictObject*)pEntry->pObject;
+			CObjectBase* pSMask = pDict->Get("SMask");
+			if (!pSMask)
+				continue;
+			if (pSMask->GetType() == object_type_PROXY)
+				pSMask = ((CProxyObject*)pSMask)->Get();
+			if (pSMask)
+				vSMask.push_back(pSMask);
+		}
+
+		CObjectBase* pFound = NULL;
+		for (int nIndex = 0; nIndex < nCount; ++nIndex)
+		{
+			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
+			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
+				continue;
+			if (pEntry->pObject->GetType() != object_type_DICT)
+				continue;
+			CDictObject* pDict = (CDictObject*)pEntry->pObject;
+			CObjectBase* pSubtype = pDict->Get("Subtype");
+			if (!pSubtype || pSubtype->GetType() != object_type_NAME)
+				continue;
+			if (0 != strcmp(((CNameObject*)pSubtype)->Get(), "Image"))
+				continue;
+			if (pDict->Get("ImageMask"))
+				continue;
+			bool bSMask = false;
+			for (size_t i = 0; i < vSMask.size(); ++i)
+			{
+				if (vSMask[i] == pEntry->pObject)
+				{
+					bSMask = true;
+					break;
+				}
+			}
+			if (bSMask)
+				continue;
+			if (DictUInt(pDict, "Width") != unWidth || DictUInt(pDict, "Height") != unHeight)
+				continue;
+			pFound = pEntry->pObject;
+			break;
+		}
+		return pFound;
 	}
 	void CDocument::AddObject(CObjectBase* pObj)
 	{
