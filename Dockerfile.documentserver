@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+# Rebuild only libPdfFile.so (WriteNew PDF save) and drop it into Document Server 9.2.1.
+# x2t loads this .so dynamically — no need to relink x2t when the ABI matches.
+
+FROM onlyoffice/documentserver:9.2.1 AS ds-libs
+
+FROM ubuntu:24.04 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        g++ make pkg-config git ca-certificates python3 \
+        qt5-qmake qtbase5-dev \
+        zlib1g-dev libicu-dev libboost-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /core
+COPY . /core
+
+RUN set -eux; \
+    if [ ! -d /core/Common/3dParty/brotli/brotli/c ]; then \
+      git clone https://github.com/google/brotli.git /core/Common/3dParty/brotli/brotli; \
+      git -C /core/Common/3dParty/brotli/brotli checkout a47d7475063eb223c87632eed806c0070e70da29; \
+    fi
+
+RUN mkdir -p /core/build/lib/linux_64
+COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/libgraphics.so /core/build/lib/linux_64/
+COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/libkernel.so /core/build/lib/linux_64/
+COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/libUnicodeConverter.so /core/build/lib/linux_64/
+COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/libkernel_network.so /core/build/lib/linux_64/
+
+# PdfFile only needs CryptoPP primitives, not OfficeCryptReader (OOXML/boost).
+RUN python3 -c "from pathlib import Path; p=Path('/core/Common/3dParty/cryptopp/project/cryptopp.pro'); t=p.read_text(); p.write_text(t.split('# OfficeCryptReader')[0])"
+
+RUN set -eux; \
+    QMAKE="$(command -v qmake || true)"; \
+    if [ -z "$QMAKE" ]; then QMAKE="$(command -v qmake5 || true)"; fi; \
+    if [ -z "$QMAKE" ]; then QMAKE="/usr/lib/qt5/bin/qmake"; fi; \
+    echo "Using qmake: $QMAKE"; \
+    "$QMAKE" -v; \
+    cd /core/Common/3dParty/cryptopp/project; \
+    "$QMAKE" cryptopp.pro -spec linux-g++; \
+    make -j"$(nproc)"; \
+    cd /core/PdfFile; \
+    "$QMAKE" PdfFile.pro -spec linux-g++; \
+    make -j"$(nproc)"; \
+    test -f /core/build/lib/linux_64/libPdfFile.so; \
+    cp /core/build/lib/linux_64/libPdfFile.so /tmp/libPdfFile.so
+
+FROM onlyoffice/documentserver:9.2.1
+COPY --from=builder /core/build/lib/linux_64/libPdfFile.so /var/www/onlyoffice/documentserver/server/FileConverter/bin/libPdfFile.so

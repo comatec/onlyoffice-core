@@ -33,6 +33,7 @@
 #include <vector>
 #include <ctime>
 #include <cwctype>
+#include <limits>
 
 namespace PdfWriter
 {
