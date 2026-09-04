@@ -74,6 +74,7 @@ namespace PdfWriter
 	CFontCidTrueType::CFontCidTrueType(CXref* pXref, CDocument* pDocument, const std::wstring& wsFontPath, unsigned int unIndex, CFontFileTrueType* pFontTT) : CFontDict(pXref, pDocument)
 	{
 		m_bNeedAddFontName = true;
+		m_bPrepared = false;
 		m_pFontFile = pFontTT;
 
 		m_wsFontPath  = wsFontPath;
@@ -240,6 +241,10 @@ namespace PdfWriter
 	}
 	void CFontCidTrueType::BeforeWrite()
 	{
+		if (m_bPrepared)
+			return;
+		m_bPrepared = true;
+
 		if (m_pFontDescriptor)
 		{
 			CDictObject* pCIDSet = (CDictObject*)m_pFontDescriptor->Get("CIDSet");			

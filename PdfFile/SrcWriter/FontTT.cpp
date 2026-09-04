@@ -108,6 +108,8 @@ namespace PdfWriter
 		if (m_pFontFile && m_pFontFileDict)
 		{
 			CStream* pStream = m_pFontFileDict->GetStream();
+			if (pStream && pStream->Size() > 0)
+				return;
 			if (m_pFontFile->GetOpenTypeCFF())
 				m_pFontFile->WriteOTF(pStream);
 			else

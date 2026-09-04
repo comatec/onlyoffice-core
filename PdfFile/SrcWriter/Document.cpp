@@ -55,6 +55,11 @@
 #include "../../DesktopEditor/agg-2.4/include/agg_span_hatch.h"
 #include "../../DesktopEditor/common/SystemUtils.h"
 
+#include "Objects.h"
+#include <map>
+#include <cstring>
+#include "../../OfficeUtils/src/zlib-1.2.11/zlib.h"
+
 #ifdef CreateFont
 #undef CreateFont
 #endif
@@ -253,9 +258,135 @@ namespace PdfWriter
 		pStream->ClearWithoutAttack();
 		return true;
 	}
+	static bool StreamIsFlate(CDictObject* pDict)
+	{
+		if ((pDict->GetFilter() & STREAM_FILTER_FLATE_DECODE) != 0)
+			return true;
+		CObjectBase* pFilter = pDict->Get("Filter");
+		if (!pFilter)
+			return false;
+		if (pFilter->GetType() == object_type_NAME)
+			return 0 == strcmp(((CNameObject*)pFilter)->Get(), "FlateDecode");
+		if (pFilter->GetType() == object_type_ARRAY)
+		{
+			CArrayObject* pArr = (CArrayObject*)pFilter;
+			if (pArr->GetCount() < 1)
+				return false;
+			CObjectBase* pFirst = pArr->Get(0);
+			return pFirst && pFirst->GetType() == object_type_NAME
+				&& 0 == strcmp(((CNameObject*)pFirst)->Get(), "FlateDecode");
+		}
+		return false;
+	}
+	static bool StreamFingerprint(CDictObject* pDict, unsigned int& unCrc, unsigned int& unSize)
+	{
+		CStream* pStream = pDict->GetStream();
+		if (!pStream || pStream->GetType() != StreamMemory)
+			return false;
+		CMemoryStream* pMem = (CMemoryStream*)pStream;
+		BYTE* pBuf = pMem->GetBuffer();
+		unsigned int unRaw = pMem->Size();
+		if (!pBuf || unRaw < 2048)
+			return false;
+
+		bool bMerge = false;
+		CObjectBase* pSubtype = pDict->Get("Subtype");
+		CObjectBase* pType = pDict->Get("Type");
+		CObjectBase* pLength1 = pDict->Get("Length1");
+		if (pLength1)
+			bMerge = true;
+		if (pSubtype && pSubtype->GetType() == object_type_NAME)
+		{
+			const char* sName = ((CNameObject*)pSubtype)->Get();
+			if (0 == strcmp(sName, "Image") || 0 == strcmp(sName, "CIDFontType0C"))
+				bMerge = true;
+		}
+		if (pType && pType->GetType() == object_type_NAME
+			&& 0 == strcmp(((CNameObject*)pType)->Get(), "XObject"))
+			bMerge = true;
+		if (unRaw >= 8192)
+			bMerge = true;
+		if (!bMerge)
+			return false;
+
+		if (StreamIsFlate(pDict))
+		{
+			unsigned int unGuess = unRaw * 16;
+			if (pLength1 && pLength1->GetType() == object_type_NUMBER)
+			{
+				int nLen1 = ((CNumberObject*)pLength1)->Get();
+				if (nLen1 > 0 && (unsigned int)nLen1 > unGuess)
+					unGuess = (unsigned int)nLen1;
+			}
+			if (unGuess > 32 * 1024 * 1024)
+				unGuess = 32 * 1024 * 1024;
+			std::vector<BYTE> vOut(unGuess);
+			uLongf unDest = unGuess;
+			if (Z_OK == uncompress(vOut.data(), &unDest, pBuf, unRaw) && unDest > 0)
+			{
+				unCrc = crc32(0L, vOut.data(), unDest);
+				unSize = (unsigned int)unDest;
+				return true;
+			}
+		}
+
+		unCrc = crc32(0L, pBuf, unRaw);
+		unSize = unRaw;
+		return true;
+	}
+	void CDocument::DeduplicateResourceStreams()
+	{
+		if (!m_pXref)
+			return;
+
+		std::map<unsigned long long, CObjectBase*> mKeep;
+		int nCount = m_pXref->GetCount();
+		for (int nIndex = 0; nIndex < nCount; ++nIndex)
+		{
+			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
+			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
+				continue;
+			if (pEntry->pObject->GetType() != object_type_DICT)
+				continue;
+			CDictObject* pDict = (CDictObject*)pEntry->pObject;
+			unsigned int unCrc = 0, unSize = 0;
+			if (!StreamFingerprint(pDict, unCrc, unSize))
+				continue;
+			unsigned long long nKey = ((unsigned long long)unCrc << 32) | unSize;
+			std::map<unsigned long long, CObjectBase*>::iterator it = mKeep.find(nKey);
+			if (it == mKeep.end())
+			{
+				mKeep[nKey] = pEntry->pObject;
+				continue;
+			}
+			if (it->second == pEntry->pObject)
+				continue;
+
+			std::vector<CProxyObject*> vRefs = pEntry->pRefObj;
+			for (size_t i = 0; i < vRefs.size(); ++i)
+			{
+				if (vRefs[i])
+					vRefs[i]->Set(it->second);
+			}
+			pEntry->nEntryType = 'f';
+		}
+	}
     void CDocument::SaveToStream(CStream* pStream)
 	{
 		m_pCatalog->AddMetadata(m_pXref, m_pInfo);
+
+		if (m_pXref)
+		{
+			int nCount = m_pXref->GetCount();
+			for (int nIndex = 0; nIndex < nCount; ++nIndex)
+			{
+				TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
+				if (pEntry && pEntry->nEntryType == 'n' && pEntry->pObject
+					&& pEntry->pObject->GetType() == object_type_DICT)
+					((CDictObject*)pEntry->pObject)->BeforeWrite();
+			}
+			DeduplicateResourceStreams();
+		}
 
 		// Пишем заголовок
 		if (IsPDFA())

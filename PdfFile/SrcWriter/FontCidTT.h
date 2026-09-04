@@ -152,6 +152,7 @@ namespace PdfWriter
 		int                                      m_nGlyphsCount;
 		int                                      m_nSymbolicCmap;
 		bool                                     m_bNeedAddFontName;
+		bool                                     m_bPrepared;
 
 		friend class CDocument;
 	};

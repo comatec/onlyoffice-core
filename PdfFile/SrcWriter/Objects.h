@@ -380,6 +380,7 @@ namespace PdfWriter
 		CProxyObject(CObjectBase* pObject, bool bClear = false);
 		~CProxyObject();
 		void Clear();
+		void Set(CObjectBase* pObject);
 		CObjectBase* Get() const
 		{
 			return m_pObject;

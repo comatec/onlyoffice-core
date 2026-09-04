@@ -37,6 +37,8 @@
 #include "Document.h"
 #include "EncryptDictionary.h"
 
+#include <algorithm>
+
 // Если установлен бит OTYPE_DIRECT, значит данный объект принадлежит другому
 // объекту. Если установлен бит OTYPE_INDIRECT, значит объект управляется таблицей xref.
 #define  FLAG_NONE     0x0
@@ -288,6 +290,24 @@ namespace PdfWriter
 		}
 		else
 			m_pObject = NULL;
+	}
+	void CProxyObject::Set(CObjectBase* pObject)
+	{
+		if (m_pObject == pObject)
+			return;
+
+		TXrefEntry* pOld = m_pObject ? m_pObject->GetXrefEntry() : NULL;
+		if (pOld)
+		{
+			std::vector<CProxyObject*>::iterator it = std::find(pOld->pRefObj.begin(), pOld->pRefObj.end(), this);
+			if (it != pOld->pRefObj.end())
+				pOld->pRefObj.erase(it);
+		}
+
+		m_pObject = pObject;
+		TXrefEntry* pNew = m_pObject ? m_pObject->GetXrefEntry() : NULL;
+		if (pNew)
+			pNew->pRefObj.push_back(this);
 	}
 	//----------------------------------------------------------------------------------------
 	// CArrayObject

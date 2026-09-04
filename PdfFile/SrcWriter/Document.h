@@ -107,6 +107,7 @@ namespace PdfWriter
 		void              Close();
 		bool              SaveToFile(const std::wstring& wsPath);
 		bool              SaveToMemory(BYTE** pData, int* pLength);
+		void              DeduplicateResourceStreams();
 		bool              SaveNewWithPassword(CXref* pXref, CXref* _pXref, const std::wstring& wsPath, const std::wstring& wsOwnerPassword, const std::wstring& wsUserPassword, CDictObject* pTrailer);
 			              
         void              SetPasswords(const std::wstring & wsOwnerPassword, const std::wstring & wsUserPassword);
