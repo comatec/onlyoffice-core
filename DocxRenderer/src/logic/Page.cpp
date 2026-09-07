@@ -625,9 +625,8 @@ namespace NSDocxRenderer
 
 	void CPage::CalcSelected()
 	{
-		// Recognize writes a substitute face that is often wider than the PDF
-		// advances. A too-narrow box wraps the leftover and hides it (title,
-		// last words). Widen only enough for the painted line to stay visible.
+		// Recognize: keep the PDF left edge. Grow the right edge only when the
+		// substitute face is wider than the box, capped at ~5 characters.
 		constexpr int kRecognizeSpacingHdthPt = 6;
 		const double spacingMm = (kRecognizeSpacingHdthPt / 100.0) * c_dPtToMM;
 
@@ -637,8 +636,6 @@ namespace NSDocxRenderer
 				continue;
 
 			double needRight = line->m_dRight;
-			double needLeft = line->m_dLeft;
-			double needBot = line->m_dBot;
 
 			for (auto& cont : line->m_arConts)
 			{
@@ -661,76 +658,26 @@ namespace NSDocxRenderer
 
 						const double measured = cont->m_oSelectedSizes.dWidth;
 						if (measured > 0.5)
-						{
-							double scale = cont->m_dWidth / measured;
-							double applied = 1.0;
-							// Slightly larger face can fill a narrow substitute.
-							// Never shrink: a smaller face plus a short box hides the end.
-							if (scale > 1.03)
-							{
-								if (scale > 1.08) scale = 1.08;
-								applied = scale;
-								const double newSize = cont->m_pFontStyle->dFontSize * scale;
-								if (m_oManagers.pFontStyleManager)
-								{
-									cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
-									            cont->m_pFontStyle->oBrush,
-									            cont->m_pFontStyle->wsFontName,
-									            newSize,
-									            cont->m_pFontStyle->bItalic,
-									            cont->m_pFontStyle->bBold);
-								}
-								cont->m_oSelectedFont.Size = newSize;
-								fontMm = std::max(2.0, newSize * c_dPtToMM);
-							}
-							painted = measured * applied;
-						}
-
-						const double estimate = fontMm * 0.56 * static_cast<double>(cont->GetLength());
-						if (estimate > painted)
-							painted = estimate;
+							painted = measured;
 					}
 
 					const double tracking = spacingMm * static_cast<double>(cont->GetLength());
-					const double pad = std::max(4.0, fontMm * 1.35);
-					const double need = painted + tracking + pad;
-					if (need > cont->m_dWidth + 0.2)
+					const double charW = fontMm * 0.50;
+					const double maxExtra = charW * 5.0;
+					const double need = painted + tracking + charW * 0.4;
+					if (need > cont->m_dWidth + 0.15)
 					{
-						const double extra = need - cont->m_dWidth;
-						const double pageCenter = m_dWidth / 2.0;
-						const double lineCenter = cont->m_dLeft + cont->m_dWidth / 2.0;
-						const bool centered = fabs(lineCenter - pageCenter) < 18.0
-						        && cont->m_dWidth < m_dWidth * 0.8;
-						if (centered)
-						{
-							cont->m_dLeft -= extra / 2.0;
-							cont->m_dRight += extra / 2.0;
-						}
-						else
-						{
-							cont->m_dRight = cont->m_dLeft + need;
-						}
-						if (cont->m_dLeft < 2.0)
-							cont->m_dLeft = 2.0;
+						double extra = need - cont->m_dWidth;
+						if (extra > maxExtra)
+							extra = maxExtra;
+						cont->m_dRight = cont->m_dLeft + cont->m_dWidth + extra;
 						const double pageLimit = m_dWidth > 4.0 ? m_dWidth - 2.0 : cont->m_dRight;
 						if (cont->m_dRight > pageLimit)
 							cont->m_dRight = pageLimit;
 						cont->m_dWidth = cont->m_dRight - cont->m_dLeft;
+						if (cont->m_dRight > needRight)
+							needRight = cont->m_dRight;
 					}
-
-					const double minH = fontMm * 1.45;
-					if (cont->m_dHeight < minH)
-					{
-						cont->m_dHeight = minH;
-						cont->m_dBot = cont->m_dTop + cont->m_dHeight;
-					}
-
-					if (cont->m_dLeft < needLeft)
-						needLeft = cont->m_dLeft;
-					if (cont->m_dRight > needRight)
-						needRight = cont->m_dRight;
-					if (cont->m_dBot > needBot)
-						needBot = cont->m_dBot;
 
 					cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
 					cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
@@ -741,18 +688,10 @@ namespace NSDocxRenderer
 				}
 			}
 
-			if (m_bUseDefaultFont)
+			if (m_bUseDefaultFont && needRight > line->m_dRight + 0.15)
 			{
-				if (needLeft < line->m_dLeft - 0.2)
-					line->m_dLeft = needLeft;
-				if (needRight > line->m_dRight + 0.2)
-					line->m_dRight = needRight;
+				line->m_dRight = needRight;
 				line->m_dWidth = line->m_dRight - line->m_dLeft;
-				if (needBot > line->m_dBot + 0.2)
-				{
-					line->m_dBot = needBot;
-					line->m_dHeight = line->m_dBot - line->m_dTop;
-				}
 			}
 		}
 
@@ -765,16 +704,10 @@ namespace NSDocxRenderer
 				continue;
 			for (auto& line : paragraph->m_arTextLines)
 			{
-				if (!line)
+				if (!line || line->m_dRight <= paragraph->m_dRight + 0.15)
 					continue;
-				if (line->m_dLeft < paragraph->m_dLeft - 0.2)
-					paragraph->m_dLeft = line->m_dLeft;
-				if (line->m_dRight > paragraph->m_dRight + 0.2)
-					paragraph->m_dRight = line->m_dRight;
-				if (line->m_dBot > paragraph->m_dBot + 0.2)
-					paragraph->m_dBot = line->m_dBot;
+				paragraph->m_dRight = line->m_dRight;
 				paragraph->m_dWidth = paragraph->m_dRight - paragraph->m_dLeft;
-				paragraph->m_dHeight = paragraph->m_dBot - paragraph->m_dTop;
 			}
 		}
 	}
