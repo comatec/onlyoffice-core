@@ -608,7 +608,7 @@ namespace NSDocxRenderer
 				else
 				{
 					for (size_t j = first_index; j < second_index; ++j)
-						m_arShapes.push_back(CreateSingleParagraphShape(m_arParagraphs[j], m_bWriteStyleRaw));
+						m_arShapes.push_back(CreateSingleParagraphShape(m_arParagraphs[j]));
 				}
 			}
 		}
@@ -617,7 +617,7 @@ namespace NSDocxRenderer
 		         m_eTextAssociationType == TextAssociationType::tatShapeLine)
 		{
 			for (auto& p : m_arParagraphs)
-				m_arShapes.push_back(CreateSingleParagraphShape(p, m_bWriteStyleRaw));
+				m_arShapes.push_back(CreateSingleParagraphShape(p));
 		}
 
 		return output_objects;
@@ -1904,58 +1904,17 @@ namespace NSDocxRenderer
 		if (m_eTextAssociationType == TextAssociationType::tatPlainLine ||
 		        m_eTextAssociationType == TextAssociationType::tatShapeLine)
 		{
-			// Per text-block column: detect left/right/center/justify for single-line shapes.
-			for (auto& g : arTextLineGroups)
+			// Keep each PDF line as its own shape at the exact left/right.
+			// Do not widen to a column or force justify — that shifts the right
+			// margin and invents first-line/tab-like gaps vs the original PDF.
+			auto paragraph = std::make_shared<CParagraph>();
+			for (auto& curr_line : m_arTextLines)
 			{
-				if (!g || g->m_arItems.empty())
-					continue;
-
-				double colLeft = g->m_arItems.front()->m_dLeft;
-				double colRight = g->m_arItems.front()->m_dRight;
-				for (const auto& line : g->m_arItems)
-				{
-					if (!line) continue;
-					colLeft = std::min(colLeft, line->m_dLeft);
-					colRight = std::max(colRight, line->m_dRight);
-				}
-				const double colWidth = colRight - colLeft;
-				const double colCenter = colLeft + colWidth / 2.0;
-
-				for (auto& curr_line : g->m_arItems)
-				{
-					if (!curr_line) continue;
-
-					auto paragraph = std::make_shared<CParagraph>();
-					min_left = m_dWidth;
-					max_right = 0.0;
-					add_line(paragraph, curr_line);
-
-					const bool nearLeft = fabs(curr_line->m_dLeft - colLeft) < c_dERROR_OF_PARAGRAPH_BORDERS_MM;
-					const bool nearRight = fabs(curr_line->m_dRight - colRight) < c_dERROR_OF_PARAGRAPH_BORDERS_MM;
-					const double lineCenter = curr_line->m_dLeft + curr_line->m_dWidth / 2.0;
-					const bool nearCenter = fabs(lineCenter - colCenter) < c_dCENTER_POSITION_ERROR_MM;
-
-					// Widen to column so justify (both) has space to distribute.
-					if (nearLeft && nearRight)
-					{
-						min_left = colLeft;
-						max_right = colRight;
-					}
-
-					add_paragraph(paragraph);
-					if (ar_paragraphs.empty())
-						continue;
-
-					auto& p = ar_paragraphs.back();
-					if (nearLeft && nearRight)
-						p->m_eTextAlignmentType = CParagraph::tatByWidth;
-					else if (!nearLeft && nearRight)
-						p->m_eTextAlignmentType = CParagraph::tatByRight;
-					else if (!nearLeft && nearCenter)
-						p->m_eTextAlignmentType = CParagraph::tatByCenter;
-					else
-						p->m_eTextAlignmentType = CParagraph::tatByLeft;
-				}
+				if (!curr_line) continue;
+				min_left = m_dWidth;
+				max_right = 0.0;
+				add_line(paragraph, curr_line);
+				add_paragraph(paragraph);
 			}
 		}
 
@@ -2596,7 +2555,7 @@ namespace NSDocxRenderer
 		return pShape;
 	}
 
-	CPage::shape_ptr_t CPage::CreateSingleParagraphShape(paragraph_ptr_t& pParagraph, bool bPadRawStyle)
+	CPage::shape_ptr_t CPage::CreateSingleParagraphShape(paragraph_ptr_t& pParagraph)
 	{
 		auto pShape = std::make_shared<CShape>();
 
@@ -2618,23 +2577,6 @@ namespace NSDocxRenderer
 		if (pParagraph->m_dSpaceBefore > 0) pParagraph->m_dSpaceBefore = 0;
 
 		pParagraph->m_dSpaceAfter = 0;
-
-		// Recognize: slight pad so substituted fonts / underlines are not clipped
-		// (avoids "INTERPRE" / "CONCL" cut-offs without letter-spacing stretch).
-		if (bPadRawStyle)
-		{
-			const double padR = std::max(2.5, pShape->m_dWidth * 0.04);
-			const double padB = std::max(0.8, pShape->m_dHeight * 0.2);
-			pShape->m_dWidth += padR;
-			pShape->m_dRight += padR;
-			pShape->m_dHeight += padB;
-			pShape->m_dBot += padB;
-			pParagraph->m_dWidth = pShape->m_dWidth;
-			pParagraph->m_dRight = pShape->m_dRight;
-			pParagraph->m_dHeight = pShape->m_dHeight;
-			pParagraph->m_dBot = pShape->m_dBot;
-			pParagraph->m_dLineHeight = std::max(pParagraph->m_dLineHeight, pParagraph->m_dHeight);
-		}
 
 		pShape->m_arOutputObjects.push_back(pParagraph);
 		pShape->m_eType = CShape::eShapeType::stTextBox;
