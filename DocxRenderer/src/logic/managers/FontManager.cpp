@@ -515,9 +515,11 @@ namespace NSDocxRenderer
 
 		if (has(L"times") || has(L"nimbusrom") || has(L"liberationserif") || has(L"liberation serif"))
 			return L"Times New Roman";
-		if (has(L"calibri") || has(L"carlito"))
-			return L"Calibri";
-		if (has(L"arial") || has(L"helvetica") || has(L"nimbussan") || has(L"liberationsans") || has(L"liberation sans"))
+		// Calibri is not in Document Server CE; Carlito is the metric stand-in
+		// but Recognize + Carlito overshoots (~12pt). Arial is the closest
+		// face the editor actually lists (user-verified on this report).
+		if (has(L"calibri") || has(L"carlito") || has(L"arial") || has(L"helvetica")
+		        || has(L"nimbussan") || has(L"liberationsans") || has(L"liberation sans"))
 			return L"Arial";
 		if (has(L"courier") || has(L"liberationmono") || has(L"nimbusmon"))
 			return L"Courier New";

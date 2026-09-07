@@ -670,8 +670,8 @@ namespace NSDocxRenderer
 						double scale = layoutW / measured;
 						if (scale < 0.97 || scale > 1.03)
 						{
-							if (scale < 0.90) scale = 0.90;
-							if (scale > 1.18) scale = 1.18;
+							if (scale < 0.92) scale = 0.92;
+							if (scale > 1.12) scale = 1.12;
 							double newSize = cont->m_pFontStyle->dFontSize * scale;
 							newSize = std::round(newSize * 2.0) / 2.0;
 							if (newSize < 6.0) newSize = 6.0;

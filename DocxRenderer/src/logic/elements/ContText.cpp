@@ -1091,14 +1091,11 @@ namespace NSDocxRenderer
 		{
 			wsStyleFontName = oFont.Name;
 			m_pFontSelector->CheckFontNamePDF(wsStyleFontName, bStyleBold, bStyleItalic);
-			const std::wstring wsMapped = CFontSelector::MapRecognizeOfficeFont(wsStyleFontName);
-			const std::wstring wsSelected = m_pFontSelector->GetSelectedName();
-			// One face for box + run: prefer the installed substitute the editor
-			// will actually paint, then the mapped PDF family.
-			if (!wsSelected.empty())
-				wsStyleFontName = wsSelected;
-			else if (!wsMapped.empty())
-				wsStyleFontName = wsMapped;
+			wsStyleFontName = CFontSelector::MapRecognizeOfficeFont(wsStyleFontName);
+			// Do not use GetSelectedName() here — on CE it is often Carlito
+			// (Calibri stand-in) and Recognize then emits Carlito 12pt.
+			if (wsStyleFontName.empty())
+				wsStyleFontName = L"Arial";
 			bStyleBold = bStyleBold || oParams.bDefaultBold || bForcedBold;
 			bStyleItalic = bStyleItalic || oParams.bDefaultItalic;
 		}
