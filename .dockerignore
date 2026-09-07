@@ -1,8 +1,6 @@
 .git
 .github
 Apple
-DjVuFile
-DocxRenderer
 EpubFile
 Fb2File
 HtmlFile
@@ -25,14 +23,17 @@ RtfFile
 Test
 TxtFile
 X2tConverter
-XpsFile
+# DjVuFile / DocxRenderer / XpsFile needed for drawingfile.wasm
 Common/3dParty/v8
 Common/3dParty/v8_89
 Common/3dParty/cef
 Common/3dParty/libvlc
 Common/3dParty/boost
 Common/3dParty/curl
+# openssl + icu sources are fetched inside the Docker WASM stage
 Common/3dParty/openssl
+Common/3dParty/icu/icu
+Common/3dParty/icu/icu2
 Common/3dParty/heif
 Common/3dParty/socketio
 Common/3dParty/hunspell
@@ -44,7 +45,18 @@ Common/3dParty/html
 Common/3dParty/ixwebsocket
 Common/3dParty/md
 Common/3dParty/misc
-Common/3dParty/harfbuzz
 Common/3dParty/apple
+DesktopEditor/graphics/pro/js/emsdk
+DesktopEditor/graphics/pro/js/deploy
+DesktopEditor/graphics/pro/js/o
+DesktopEditor/graphics/pro/js/xml
+DesktopEditor/graphics/pro/js/freetype-2.10.4
 **/*.a
-**/build/
+# Do NOT ignore DesktopEditor/xml/build (libxml2_all.c + config.h needed for WASM)
+PdfFile/build/
+Common/build/
+DesktopEditor/build/
+DocxRenderer/build/
+DjVuFile/build/
+XpsFile/build/
+build/

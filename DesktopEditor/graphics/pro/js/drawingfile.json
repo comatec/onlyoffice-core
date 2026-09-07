@@ -181,7 +181,7 @@
 	},
 	{
 		"folder": "../../../../OfficeUtils/src/zlib-1.2.11/",
-		"files": ["adler32.c", "crc32.c", "deflate.c", "infback.c", "inffast.c", "inflate.c", "inftrees.c", "trees.c", "zutil.c", "compress.c"]
+		"files": ["adler32.c", "crc32.c", "deflate.c", "infback.c", "inffast.c", "inflate.c", "inftrees.c", "trees.c", "zutil.c", "compress.c", "uncompr.c"]
 	},
 	{
 		"folder": "./",

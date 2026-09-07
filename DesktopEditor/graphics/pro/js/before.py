@@ -15,6 +15,9 @@ if not base.is_dir("xml"):
   base.replaceInFile("./xml/include/xmlutils.h", "#include \"../../common/", "#include \"../../../../../common/")
   base.replaceInFile("./xml/libxml2/globals.c", "int xmlGetWarningsDefaultValue = 1;", "int xmlGetWarningsDefaultValue = 0;")
   base.replaceInFile("./xml/libxml2/globals.c", "static int xmlGetWarningsDefaultValueThrDef = 1;", "static int xmlGetWarningsDefaultValueThrDef = 0;")
+  # libxml.h expects config.h beside libxml2 sources (qt preset for WASM/linux)
+  if base.is_file("./xml/build/qt/config.h") and not base.is_file("./xml/libxml2/config.h"):
+    base.copy_file("./xml/build/qt/config.h", "./xml/libxml2/config.h")
 
 if not base.is_dir("freetype-2.10.4"):
   base.copy_dir("../../../freetype-2.10.4", "./freetype-2.10.4")

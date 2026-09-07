@@ -1,10 +1,16 @@
 # syntax=docker/dockerfile:1
-# Rebuild only libPdfFile.so (WriteNew PDF save) and drop it into Document Server 9.2.1.
-# x2t loads this .so dynamically — no need to relink x2t when the ABI matches.
+# Custom OnlyOffice image:
+#  1) libPdfFile.so — WriteNew + CRC-only image dedupe
+#  2) drawingfile.wasm — Recognize font/layout fix (ScanPage)
+#
+#   docker build -f Dockerfile.documentserver -t onlyoffice-pdf-hotfix:9.2.1 .
 
 FROM onlyoffice/documentserver:9.2.1 AS ds-libs
 
-FROM ubuntu:24.04 AS builder
+# ---------------------------------------------------------------------------
+# Stage: native PdfFile.so
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS builder-pdffile
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         g++ make pkg-config git ca-certificates python3 \
@@ -27,7 +33,6 @@ COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/
 COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/libUnicodeConverter.so /core/build/lib/linux_64/
 COPY --from=ds-libs /var/www/onlyoffice/documentserver/server/FileConverter/bin/libkernel_network.so /core/build/lib/linux_64/
 
-# PdfFile only needs CryptoPP primitives, not OfficeCryptReader (OOXML/boost).
 RUN python3 -c "from pathlib import Path; p=Path('/core/Common/3dParty/cryptopp/project/cryptopp.pro'); t=p.read_text(); p.write_text(t.split('# OfficeCryptReader')[0])"
 
 RUN set -eux; \
@@ -42,8 +47,97 @@ RUN set -eux; \
     cd /core/PdfFile; \
     "$QMAKE" PdfFile.pro -spec linux-g++; \
     make -j"$(nproc)"; \
-    test -f /core/build/lib/linux_64/libPdfFile.so; \
-    cp /core/build/lib/linux_64/libPdfFile.so /tmp/libPdfFile.so
+    test -f /core/build/lib/linux_64/libPdfFile.so
 
+# ---------------------------------------------------------------------------
+# Stage: drawingfile.wasm (Recognize / ScanPage)
+# Layout required by ONLYOFFICE scripts: /build/{build_tools,core}
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS builder-wasm
+ARG BUILD_WASM=1
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates git python3 python-is-python3 \
+        curl xz-utils zip unzip perl \
+        build-essential cmake pkg-config \
+        openjdk-17-jre-headless \
+        nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/ONLYOFFICE/build_tools.git /build/build_tools
+COPY . /build/core
+
+# Fetch OpenSSL headers (OpenSSL_1_1_1f) — config + generated opensslconf.h
+RUN set -eux; \
+    OPENSSL_DIR=/build/core/Common/3dParty/openssl; \
+    mkdir -p "$OPENSSL_DIR"; \
+    git clone --depth=1 --branch OpenSSL_1_1_1f https://github.com/openssl/openssl.git "$OPENSSL_DIR/openssl"; \
+    cd "$OPENSSL_DIR/openssl"; \
+    ./config enable-md2 no-shared no-asm \
+      --prefix="$OPENSSL_DIR/build/linux_64" \
+      --openssldir="$OPENSSL_DIR/build/linux_64"; \
+    # opensslconf.h is produced by generated make rules, not by ./config alone \
+    make -j"$(nproc)" build_generated; \
+    if [ ! -f include/openssl/opensslconf.h ]; then \
+      echo "opensslconf.h missing after build_generated; listing include/openssl:"; \
+      ls -la include/openssl/ || true; \
+      find . -name 'opensslconf.h' -o -name 'configuration.h' | head -20; \
+      exit 1; \
+    fi; \
+    mkdir -p "$OPENSSL_DIR/build/linux_64/include"; \
+    cp -a include/. "$OPENSSL_DIR/build/linux_64/include/"; \
+    test -f "$OPENSSL_DIR/build/linux_64/include/openssl/opensslconf.h"
+
+# Fetch ICU sources used by drawingfile.json
+RUN set -eux; \
+    ICU_DIR=/build/core/Common/3dParty/icu; \
+    mkdir -p "$ICU_DIR"; \
+    git clone --depth 1 --branch release-74-2 https://github.com/unicode-org/icu.git /tmp/icu2; \
+    cp -a /tmp/icu2/icu4c "$ICU_DIR/icu"; \
+    rm -rf /tmp/icu2
+
+# Closure compiler for min.py (optional minify)
+RUN set -eux; \
+    mkdir -p /build/sdkjs/build/node_modules/google-closure-compiler-java; \
+    npm install --prefix /tmp/cc google-closure-compiler-java@20240317.0.0; \
+    cp /tmp/cc/node_modules/google-closure-compiler-java/compiler.jar \
+       /build/sdkjs/build/node_modules/google-closure-compiler-java/compiler.jar; \
+    rm -rf /tmp/cc
+
+# WASM-only (skip asm/IE) + resilient after.py
+RUN python3 -c "import json; from pathlib import Path; p=Path('/build/core/DesktopEditor/graphics/pro/js/drawingfile.json'); d=json.loads(p.read_text()); d['asm']=False; p.write_text(json.dumps(d, indent=chr(9))+chr(10)); print('asm=false')"
+RUN python3 /build/core/scripts/docker-after-drawingfile.py
+
+# Build drawingfile.wasm via Common/js/make.py
+RUN set -eux; \
+    if [ "$BUILD_WASM" != "1" ]; then \
+      mkdir -p /build/core/DesktopEditor/graphics/pro/js/deploy; \
+      echo '/* skipped */' > /build/core/DesktopEditor/graphics/pro/js/deploy/drawingfile.js; \
+      printf '\0' > /build/core/DesktopEditor/graphics/pro/js/deploy/drawingfile.wasm; \
+      echo "BUILD_WASM=0 — skipping"; \
+      exit 0; \
+    fi; \
+    # Sanity: libxml qt amalgamation must be in the build context \
+    test -f /build/core/DesktopEditor/xml/build/qt/libxml2_all.c; \
+    test -f /build/core/DesktopEditor/xml/build/qt/libxml2_all2.c; \
+    test -f /build/core/DesktopEditor/xml/build/qt/config.h; \
+    test -f /build/core/Common/3dParty/openssl/openssl/include/openssl/opensslconf.h; \
+    cd /build/core/Common/js; \
+    python3 make.py ../../DesktopEditor/graphics/pro/js/drawingfile.json; \
+    test -f /build/core/DesktopEditor/graphics/pro/js/deploy/drawingfile.wasm; \
+    test -f /build/core/DesktopEditor/graphics/pro/js/deploy/drawingfile.js; \
+    ls -lh /build/core/DesktopEditor/graphics/pro/js/deploy/
+
+# ---------------------------------------------------------------------------
+# Final Document Server image
+# ---------------------------------------------------------------------------
 FROM onlyoffice/documentserver:9.2.1
-COPY --from=builder /core/build/lib/linux_64/libPdfFile.so /var/www/onlyoffice/documentserver/server/FileConverter/bin/libPdfFile.so
+
+COPY --from=builder-pdffile /core/build/lib/linux_64/libPdfFile.so \
+    /var/www/onlyoffice/documentserver/server/FileConverter/bin/libPdfFile.so
+
+COPY --from=builder-wasm /build/core/DesktopEditor/graphics/pro/js/deploy/drawingfile.wasm \
+    /var/www/onlyoffice/documentserver/sdkjs/pdf/src/engine/drawingfile.wasm
+COPY --from=builder-wasm /build/core/DesktopEditor/graphics/pro/js/deploy/drawingfile.js \
+    /var/www/onlyoffice/documentserver/sdkjs/pdf/src/engine/drawingfile.js
