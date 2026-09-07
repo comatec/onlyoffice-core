@@ -635,7 +635,7 @@ namespace NSDocxRenderer
 						// Substitute face is often narrower than the PDF advances, so the
 						// glyphs do not reach the right edge of the line box. Scale the
 						// emitted size (clamped) instead of letter-spacing the run.
-						if (cont->m_pFontStyle && !cont->m_oText.empty() && cont->m_dWidth > 0.5)
+						if (cont->m_pFontStyle && cont->GetLength() > 0 && cont->m_dWidth > 0.5)
 						{
 							cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
 							cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
