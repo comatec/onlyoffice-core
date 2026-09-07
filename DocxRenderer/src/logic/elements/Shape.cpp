@@ -954,7 +954,7 @@ namespace NSDocxRenderer
 		oWriter.WriteString(L" horzOverflow=\"overflow\""); //может ли текст выходить за пределы ограничительной рамки по горизонтали.
 		oWriter.WriteString(L" vert=\"horz\"");
 		//oWriter.WriteString(L" wrap=\"none\""); //граница шейпа по ширине текста
-		oWriter.WriteString(L" wrap=\"square\""); //Определяет параметры обертки, которые будут использоваться для данного текстового тела.
+		oWriter.WriteString(L" wrap=\"none\""); // do not wrap: a short box hides the rest of the line
 		//на сколько граница текста отступает от границы шейпа
 		oWriter.WriteString(L" lIns=\"0\""); //left   по умолчанию 0.25см = 91440
 		oWriter.WriteString(L" tIns=\"0\""); //top    по умолчанию 0.13см = 45720
