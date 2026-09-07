@@ -200,7 +200,7 @@ namespace NSDocxRenderer
 		void WriteSectionToFile(bool bLastPage, NSStringUtils::CStringBuilder& oWriter) const noexcept;
 
 		static shape_ptr_t CreateSingleLineShape(text_line_ptr_t& pLine);
-		static shape_ptr_t CreateSingleParagraphShape(paragraph_ptr_t& pParagraph);
+		static shape_ptr_t CreateSingleParagraphShape(paragraph_ptr_t& pParagraph, bool bPadRawStyle = false);
 
 		void DrawImage(shape_ptr_t pShape, std::shared_ptr<CImageInfo> oImg, CVectorGraphics& imageVector);
 		void DrawGradient(shape_ptr_t pShape);

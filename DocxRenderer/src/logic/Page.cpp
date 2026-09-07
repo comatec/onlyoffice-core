@@ -608,7 +608,7 @@ namespace NSDocxRenderer
 				else
 				{
 					for (size_t j = first_index; j < second_index; ++j)
-						m_arShapes.push_back(CreateSingleParagraphShape(m_arParagraphs[j]));
+						m_arShapes.push_back(CreateSingleParagraphShape(m_arParagraphs[j], m_bWriteStyleRaw));
 				}
 			}
 		}
@@ -617,7 +617,7 @@ namespace NSDocxRenderer
 		         m_eTextAssociationType == TextAssociationType::tatShapeLine)
 		{
 			for (auto& p : m_arParagraphs)
-				m_arShapes.push_back(CreateSingleParagraphShape(p));
+				m_arShapes.push_back(CreateSingleParagraphShape(p, m_bWriteStyleRaw));
 		}
 
 		return output_objects;
@@ -2596,7 +2596,7 @@ namespace NSDocxRenderer
 		return pShape;
 	}
 
-	CPage::shape_ptr_t CPage::CreateSingleParagraphShape(paragraph_ptr_t& pParagraph)
+	CPage::shape_ptr_t CPage::CreateSingleParagraphShape(paragraph_ptr_t& pParagraph, bool bPadRawStyle)
 	{
 		auto pShape = std::make_shared<CShape>();
 
@@ -2621,7 +2621,7 @@ namespace NSDocxRenderer
 
 		// Recognize: slight pad so substituted fonts / underlines are not clipped
 		// (avoids "INTERPRE" / "CONCL" cut-offs without letter-spacing stretch).
-		if (m_bWriteStyleRaw)
+		if (bPadRawStyle)
 		{
 			const double padR = std::max(2.5, pShape->m_dWidth * 0.04);
 			const double padB = std::max(0.8, pShape->m_dHeight * 0.2);
