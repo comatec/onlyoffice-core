@@ -1,2 +1,2 @@
-recognize-wasm-v17
-4fdb167dcd
+recognize-wasm-v18
+ef7494da86

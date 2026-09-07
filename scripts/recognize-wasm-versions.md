@@ -2,8 +2,8 @@
 
 Canonical copy for operators: `docs/recognize-wasm-versoes.md` in the Sysclinicas repo.
 
-- **Current:** recognize-wasm-v17 (`4fdb167dcd`)
-- **Next compile:** v18
+- **Current:** recognize-wasm-v18 (`ef7494da86`)
+- **Next compile:** v19
 - Git tag: `recognize-wasm-vN`
 - Docker tag: `sysclinicas-onlyoffice:recognize-vN` (keep old tags; do not only overwrite `9.2.1-writenew`)
 
