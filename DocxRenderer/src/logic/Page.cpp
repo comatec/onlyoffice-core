@@ -625,10 +625,19 @@ namespace NSDocxRenderer
 
 	void CPage::CalcSelected()
 	{
-		// Recognize: keep the PDF left edge. Grow the right edge only when the
-		// substitute face is wider than the box, capped at ~5 characters.
+		// Recognize: keep each line's left (tab). Body face ~10 pt. Then
+		// give every non-centered line the same column right so boxes match.
 		constexpr int kRecognizeSpacingHdthPt = 6;
 		const double spacingMm = (kRecognizeSpacingHdthPt / 100.0) * c_dPtToMM;
+		constexpr double kBodyFontPt = 10.0;
+
+		auto isCenteredLine = [this] (const text_line_ptr_t& line) -> bool {
+			if (!line || m_dWidth < 10.0)
+				return false;
+			const double pageCenter = m_dWidth / 2.0;
+			const double lineCenter = line->m_dLeft + line->m_dWidth / 2.0;
+			return fabs(lineCenter - pageCenter) < 16.0 && line->m_dWidth < m_dWidth * 0.58;
+		};
 
 		for (auto& line : m_arTextLines)
 		{
@@ -644,6 +653,20 @@ namespace NSDocxRenderer
 
 				if (m_bUseDefaultFont)
 				{
+					if (cont->m_pFontStyle && m_oManagers.pFontStyleManager)
+					{
+						const double sz = cont->m_pFontStyle->dFontSize;
+						if (sz >= 8.0 && sz <= 11.6 && fabs(sz - kBodyFontPt) > 0.12)
+						{
+							cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
+							            cont->m_pFontStyle->oBrush,
+							            cont->m_pFontStyle->wsFontName,
+							            kBodyFontPt,
+							            cont->m_pFontStyle->bItalic,
+							            cont->m_pFontStyle->bBold);
+						}
+					}
+
 					double painted = cont->m_dWidth;
 					double fontMm = 3.5;
 					if (cont->m_pFontStyle && cont->GetLength() > 0 && cont->m_dWidth > 0.5)
@@ -663,14 +686,10 @@ namespace NSDocxRenderer
 
 					const double tracking = spacingMm * static_cast<double>(cont->GetLength());
 					const double charW = fontMm * 0.50;
-					const double maxExtra = charW * 5.0;
 					const double need = painted + tracking + charW * 0.4;
 					if (need > cont->m_dWidth + 0.15)
 					{
-						double extra = need - cont->m_dWidth;
-						if (extra > maxExtra)
-							extra = maxExtra;
-						cont->m_dRight = cont->m_dLeft + cont->m_dWidth + extra;
+						cont->m_dRight = cont->m_dLeft + need;
 						const double pageLimit = m_dWidth > 4.0 ? m_dWidth - 2.0 : cont->m_dRight;
 						if (cont->m_dRight > pageLimit)
 							cont->m_dRight = pageLimit;
@@ -698,16 +717,62 @@ namespace NSDocxRenderer
 		if (!m_bUseDefaultFont)
 			return;
 
+		double colRight = 0.0;
+		int nLong = 0;
+		for (const auto& line : m_arTextLines)
+		{
+			if (!line || isCenteredLine(line))
+				continue;
+			if (line->m_dWidth > 50.0 && line->m_dRight > m_dWidth * 0.60)
+			{
+				colRight = std::max(colRight, line->m_dRight);
+				++nLong;
+			}
+		}
+		if (nLong == 0)
+		{
+			for (const auto& line : m_arTextLines)
+			{
+				if (line && !isCenteredLine(line))
+					colRight = std::max(colRight, line->m_dRight);
+			}
+		}
+		const double pageLimit = m_dWidth > 4.0 ? m_dWidth - 2.0 : colRight;
+		if (colRight > pageLimit)
+			colRight = pageLimit;
+
+		if (colRight > 20.0)
+		{
+			for (auto& line : m_arTextLines)
+			{
+				if (!line || isCenteredLine(line))
+					continue;
+				if (line->m_dRight + 0.4 >= colRight)
+					continue;
+				line->m_dRight = colRight;
+				line->m_dWidth = line->m_dRight - line->m_dLeft;
+				if (!line->m_arConts.empty() && line->m_arConts.back())
+				{
+					auto& last = line->m_arConts.back();
+					last->m_dRight = line->m_dRight;
+					last->m_dWidth = last->m_dRight - last->m_dLeft;
+				}
+			}
+		}
+
 		for (auto& paragraph : m_arParagraphs)
 		{
 			if (!paragraph)
 				continue;
 			for (auto& line : paragraph->m_arTextLines)
 			{
-				if (!line || line->m_dRight <= paragraph->m_dRight + 0.15)
+				if (!line)
 					continue;
-				paragraph->m_dRight = line->m_dRight;
-				paragraph->m_dWidth = paragraph->m_dRight - paragraph->m_dLeft;
+				if (line->m_dRight > paragraph->m_dRight + 0.15)
+				{
+					paragraph->m_dRight = line->m_dRight;
+					paragraph->m_dWidth = paragraph->m_dRight - paragraph->m_dLeft;
+				}
 			}
 		}
 	}
