@@ -378,89 +378,13 @@ namespace PdfWriter
 			pEntry->nEntryType = 'f';
 		}
 	}
-	static unsigned int ImageDim(CDictObject* pDict, const char* sKey)
-	{
-		CObjectBase* pObj = pDict->Get(sKey);
-		if (!pObj)
-			return 0;
-		if (pObj->GetType() == object_type_PROXY)
-			pObj = ((CProxyObject*)pObj)->Get();
-		if (!pObj)
-			return 0;
-		if (pObj->GetType() == object_type_NUMBER)
-			return (unsigned int)((CNumberObject*)pObj)->Get();
-		if (pObj->GetType() == object_type_REAL)
-			return (unsigned int)((CRealObject*)pObj)->Get();
-		return 0;
-	}
 	void CDocument::DeduplicateImagesBySize()
 	{
-		if (!m_pXref)
-			return;
-
-		std::vector<CObjectBase*> vSMask;
-		int nCount = m_pXref->GetCount();
-		for (int nIndex = 0; nIndex < nCount; ++nIndex)
-		{
-			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
-			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
-				continue;
-			if (pEntry->pObject->GetType() != object_type_DICT)
-				continue;
-			CObjectBase* pSMask = ((CDictObject*)pEntry->pObject)->Get("SMask");
-			if (!pSMask)
-				continue;
-			if (pSMask->GetType() == object_type_PROXY)
-				pSMask = ((CProxyObject*)pSMask)->Get();
-			if (pSMask)
-				vSMask.push_back(pSMask);
-		}
-
-		std::map<unsigned long long, CObjectBase*> mKeep;
-		for (int nIndex = 0; nIndex < nCount; ++nIndex)
-		{
-			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
-			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
-				continue;
-			if (pEntry->pObject->GetType() != object_type_DICT)
-				continue;
-			CDictObject* pDict = (CDictObject*)pEntry->pObject;
-			if (StreamMergeKind(pDict) != 2)
-				continue;
-			if (pDict->Get("ImageMask"))
-				continue;
-			bool bSMask = false;
-			for (size_t i = 0; i < vSMask.size(); ++i)
-			{
-				if (vSMask[i] == pEntry->pObject)
-				{
-					bSMask = true;
-					break;
-				}
-			}
-			if (bSMask)
-				continue;
-			unsigned int unW = ImageDim(pDict, "Width");
-			unsigned int unH = ImageDim(pDict, "Height");
-			if (unW < 1 || unH < 1)
-				continue;
-			unsigned long long nKey = ((unsigned long long)unW << 32) | unH;
-			std::map<unsigned long long, CObjectBase*>::iterator it = mKeep.find(nKey);
-			if (it == mKeep.end())
-			{
-				mKeep[nKey] = pEntry->pObject;
-				continue;
-			}
-			if (it->second == pEntry->pObject)
-				continue;
-			std::vector<CProxyObject*> vRefs = pEntry->pRefObj;
-			for (size_t i = 0; i < vRefs.size(); ++i)
-			{
-				if (vRefs[i])
-					vRefs[i]->Set(it->second);
-			}
-			pEntry->nEntryType = 'f';
-		}
+		// Desativado de propósito: WxH não identifica conteúdo. Gráficos diferentes
+		// com as mesmas dimensões (comum em PDFs de exame) eram fundidos num só XObject,
+		// o que fazia sumir ou trocar imagens após Save/WriteNew. A deduplicação segura
+		// por CRC do stream fica em DeduplicateResourceStreams().
+		return;
 	}
     void CDocument::SaveToStream(CStream* pStream)
 	{
@@ -482,7 +406,8 @@ namespace PdfWriter
 					pDict->BeforeWrite();
 			}
 			DeduplicateResourceStreams();
-			DeduplicateImagesBySize();
+			// Não chamar DeduplicateImagesBySize(): juntava XObjects só por Width×Height
+			// e trocava gráficos distintos do mesmo tamanho (exames com várias curvas).
 		}
 
 		// Пишем заголовок
@@ -1545,74 +1470,13 @@ namespace PdfWriter
 		m_pCurImage = pImage;
 		m_vImages.push_back({wsImagePath, nAlpha, pImage});
 	}
-	static unsigned int DictUInt(CDictObject* pDict, const char* sKey)
-	{
-		CObjectBase* pObj = pDict->Get(sKey);
-		if (!pObj)
-			return 0;
-		if (pObj->GetType() == object_type_NUMBER)
-			return (unsigned int)((CNumberObject*)pObj)->Get();
-		if (pObj->GetType() == object_type_REAL)
-			return (unsigned int)((CRealObject*)pObj)->Get();
-		return 0;
-	}
 	CObjectBase* CDocument::FindExistingImage(unsigned int unWidth, unsigned int unHeight)
 	{
-		if (!m_pXref || unWidth < 1 || unHeight < 1)
-			return NULL;
-
-		std::vector<CObjectBase*> vSMask;
-		int nCount = m_pXref->GetCount();
-		for (int nIndex = 0; nIndex < nCount; ++nIndex)
-		{
-			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
-			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
-				continue;
-			if (pEntry->pObject->GetType() != object_type_DICT)
-				continue;
-			CDictObject* pDict = (CDictObject*)pEntry->pObject;
-			CObjectBase* pSMask = pDict->Get("SMask");
-			if (!pSMask)
-				continue;
-			if (pSMask->GetType() == object_type_PROXY)
-				pSMask = ((CProxyObject*)pSMask)->Get();
-			if (pSMask)
-				vSMask.push_back(pSMask);
-		}
-
-		CObjectBase* pFound = NULL;
-		for (int nIndex = 0; nIndex < nCount; ++nIndex)
-		{
-			TXrefEntry* pEntry = m_pXref->GetEntry((unsigned int)nIndex);
-			if (!pEntry || pEntry->nEntryType != 'n' || !pEntry->pObject)
-				continue;
-			if (pEntry->pObject->GetType() != object_type_DICT)
-				continue;
-			CDictObject* pDict = (CDictObject*)pEntry->pObject;
-			CObjectBase* pSubtype = pDict->Get("Subtype");
-			if (!pSubtype || pSubtype->GetType() != object_type_NAME)
-				continue;
-			if (0 != strcmp(((CNameObject*)pSubtype)->Get(), "Image"))
-				continue;
-			if (pDict->Get("ImageMask"))
-				continue;
-			bool bSMask = false;
-			for (size_t i = 0; i < vSMask.size(); ++i)
-			{
-				if (vSMask[i] == pEntry->pObject)
-				{
-					bSMask = true;
-					break;
-				}
-			}
-			if (bSMask)
-				continue;
-			if (DictUInt(pDict, "Width") != unWidth || DictUInt(pDict, "Height") != unHeight)
-				continue;
-			pFound = pEntry->pObject;
-			break;
-		}
-		return pFound;
+		// Desativado: reutilizar XObject só por Width×Height trocava gráficos distintos.
+		// Imagens idênticas (mesmo stream) já são fundidas em DeduplicateResourceStreams().
+		(void)unWidth;
+		(void)unHeight;
+		return NULL;
 	}
 	void CDocument::AddObject(CObjectBase* pObj)
 	{

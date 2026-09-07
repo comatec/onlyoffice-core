@@ -3365,18 +3365,7 @@ PdfWriter::CImageDict* CPdfWriter::DrawImage(Aggplus::CImage* pImage, const doub
 	if (!pImage)
 		return NULL;
 
-	unsigned int unW = (unsigned int)abs((int)pImage->GetWidth());
-	unsigned int unH = (unsigned int)abs((int)pImage->GetHeight());
-	PdfWriter::CObjectBase* pExisting = m_pDocument->FindExistingImage(unW, unH);
-	if (pExisting)
-	{
-		m_pPage->GrSave();
-		UpdateTransform();
-		m_pPage->DrawImage(pExisting, MM_2_PT(dX), MM_2_PT(m_dPageHeight - dY - dH), MM_2_PT(dW), MM_2_PT(dH));
-		m_pPage->GrRestore();
-		return NULL;
-	}
-
+	// Não reutilizar XObject por Width×Height (gráficos distintos do mesmo tamanho).
 	PdfWriter::CImageDict* pPdfImage = LoadImage(pImage, nAlpha);
 	if (!pPdfImage)
 		return NULL;

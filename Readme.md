@@ -7,8 +7,13 @@ Repeatedly saving an edited PDF could cause cumulative file-size growth due to
 incremental xref updates and re-embedded image and font resources.
 
 The fix rewrites the PDF instead of appending incremental updates and
-deduplicates reusable image and font streams. Page content streams and Form
-XObjects are excluded from deduplication to preserve visible content.
+deduplicates reusable **identical** image and font streams (CRC of stream
+bytes). Page content streams and Form XObjects are excluded from deduplication
+to preserve visible content.
+
+**Do not** merge Image XObjects by Width×Height alone — distinct charts in
+exam PDFs often share dimensions and were incorrectly collapsed (missing /
+swapped graphics after save). That size-only pass was disabled.
 
 ## Core
 Server core components which are a part of [ONLYOFFICE Document Server][2] and [ONLYOFFICE Desktop Editors][4]. Enable the conversion between the most popular office document formats: DOC, DOCX, ODT, RTF, TXT, PDF, HTML, EPUB, XPS, DjVu, XLS, XLSX, ODS, CSV, PPT, PPTX, ODP.
