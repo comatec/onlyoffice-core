@@ -632,21 +632,10 @@ namespace NSDocxRenderer
 				{
 					if (m_bUseDefaultFont)
 					{
-						// Measure with the typeface we emit (style name), not the embedded
-						// PDF path — so run-spacing matches what the editor will paint.
-						if (cont->m_pFontStyle)
-						{
-							cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
-							cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
-							cont->m_oSelectedFont.Italic = cont->m_pFontStyle->bItalic;
-						}
-						cont->m_oSelectedFont.Path = L"";
-						cont->CalcSelected();
-						if (cont->m_oSelectedSizes.dWidth <= 0.0)
-						{
-							cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
-							cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
-						}
+						// Keep selected == layout width so run character-spacing stays 0.
+						// Justify must use word spacing (paragraph algn), not letter-spacing.
+						cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
+						cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
 					}
 					else
 					{
@@ -2629,6 +2618,23 @@ namespace NSDocxRenderer
 		if (pParagraph->m_dSpaceBefore > 0) pParagraph->m_dSpaceBefore = 0;
 
 		pParagraph->m_dSpaceAfter = 0;
+
+		// Recognize: slight pad so substituted fonts / underlines are not clipped
+		// (avoids "INTERPRE" / "CONCL" cut-offs without letter-spacing stretch).
+		if (m_bWriteStyleRaw)
+		{
+			const double padR = std::max(2.5, pShape->m_dWidth * 0.04);
+			const double padB = std::max(0.8, pShape->m_dHeight * 0.2);
+			pShape->m_dWidth += padR;
+			pShape->m_dRight += padR;
+			pShape->m_dHeight += padB;
+			pShape->m_dBot += padB;
+			pParagraph->m_dWidth = pShape->m_dWidth;
+			pParagraph->m_dRight = pShape->m_dRight;
+			pParagraph->m_dHeight = pShape->m_dHeight;
+			pParagraph->m_dBot = pShape->m_dBot;
+			pParagraph->m_dLineHeight = std::max(pParagraph->m_dLineHeight, pParagraph->m_dHeight);
+		}
 
 		pShape->m_arOutputObjects.push_back(pParagraph);
 		pShape->m_eType = CShape::eShapeType::stTextBox;

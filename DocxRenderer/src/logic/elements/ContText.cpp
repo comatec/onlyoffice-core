@@ -229,18 +229,18 @@ namespace NSDocxRenderer
 
 		LONG lCalculatedSpacing = 0;
 
-		if (!m_oText.empty())
+		if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
 			dSpacing *= c_dMMToDx;
 
 			//mm to points * 20
 			lCalculatedSpacing = static_cast<LONG>(dSpacing);
-		}
-
-		// ScanPage keeps original glyph widths — do not force-shrink (causes overlap after save).
-		if (!m_bWriteStyleRaw)
+			// принудительно уменьшаем spacing чтобы текстовые линии не выходили за правую границу
 			lCalculatedSpacing -= 1;
+		}
+		// ScanPage/Recognize: never letter-space to fill the box (breaks kerning / looks like
+		// "R E L A T Ó R I O"). Justification is paragraph-level word spacing instead.
 
 		if (lCalculatedSpacing != 0)
 		{
@@ -367,15 +367,14 @@ namespace NSDocxRenderer
 		oWriter.WriteString(L"<a:rPr noProof=\"1\"");
 
 		LONG lCalculatedSpacing = 0;
-		if (!m_oText.empty())
+		if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
 			dSpacing *= c_dMMToPt * 100;
 			lCalculatedSpacing = static_cast<LONG>(dSpacing);
-		}
-
-		if (!m_bWriteStyleRaw)
+			// принудительно уменьшаем spacing чтобы текстовые линии не выходили за правую границу
 			lCalculatedSpacing -= 15;
+		}
 
 		oWriter.WriteString(L" spc=\"");
 		oWriter.AddInt(lCalculatedSpacing);
@@ -494,14 +493,13 @@ namespace NSDocxRenderer
 	void CContText::ToBin(NSWasm::CData& oWriter) const
 	{
 		int lCalculatedSpacing = 0;
-		if (!m_oText.empty())
+		if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
 			dSpacing *= c_dMMToPt * 100;
 			lCalculatedSpacing = static_cast<LONG>(dSpacing);
-		}
-		if (!m_bWriteStyleRaw)
 			lCalculatedSpacing -= 15;
+		}
 
 		const BYTE kPARRUN_TYPE_RUN = 1;
 		oWriter.StartRecord(kPARRUN_TYPE_RUN);
