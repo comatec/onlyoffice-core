@@ -229,7 +229,9 @@ namespace NSDocxRenderer
 
 		LONG lCalculatedSpacing = 0;
 
-		if (!m_bWriteStyleRaw && !m_oText.empty())
+		if (m_bWriteStyleRaw && !m_oText.empty())
+			lCalculatedSpacing = 3; // ~0.15 pt, twips
+		else if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
 			dSpacing *= c_dMMToDx;
@@ -367,7 +369,9 @@ namespace NSDocxRenderer
 		oWriter.WriteString(L"<a:rPr noProof=\"1\"");
 
 		LONG lCalculatedSpacing = 0;
-		if (!m_bWriteStyleRaw && !m_oText.empty())
+		if (m_bWriteStyleRaw && !m_oText.empty())
+			lCalculatedSpacing = 14; // 0.14 pt, hundredths of a point
+		else if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
 			dSpacing *= c_dMMToPt * 100;
@@ -493,7 +497,9 @@ namespace NSDocxRenderer
 	void CContText::ToBin(NSWasm::CData& oWriter) const
 	{
 		int lCalculatedSpacing = 0;
-		if (!m_bWriteStyleRaw && !m_oText.empty())
+		if (m_bWriteStyleRaw && !m_oText.empty())
+			lCalculatedSpacing = 14; // 0.14 pt — light tracking, not a stretch
+		else if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
 			dSpacing *= c_dMMToPt * 100;
