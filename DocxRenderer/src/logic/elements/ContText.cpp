@@ -230,7 +230,7 @@ namespace NSDocxRenderer
 		LONG lCalculatedSpacing = 0;
 
 		if (m_bWriteStyleRaw && !m_oText.empty())
-			lCalculatedSpacing = 3; // ~0.15 pt, twips
+			lCalculatedSpacing = 1; // ~0.05 pt, twips
 		else if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
@@ -370,7 +370,7 @@ namespace NSDocxRenderer
 
 		LONG lCalculatedSpacing = 0;
 		if (m_bWriteStyleRaw && !m_oText.empty())
-			lCalculatedSpacing = 14; // 0.14 pt, hundredths of a point
+			lCalculatedSpacing = 6; // 0.06 pt, hundredths of a point
 		else if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());
@@ -498,7 +498,7 @@ namespace NSDocxRenderer
 	{
 		int lCalculatedSpacing = 0;
 		if (m_bWriteStyleRaw && !m_oText.empty())
-			lCalculatedSpacing = 14; // 0.14 pt — light tracking, not a stretch
+			lCalculatedSpacing = 6; // 0.06 pt — minimal tracking
 		else if (!m_bWriteStyleRaw && !m_oText.empty())
 		{
 			double dSpacing = (m_dWidth - m_oSelectedSizes.dWidth) / (m_oText.length());

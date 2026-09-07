@@ -625,8 +625,9 @@ namespace NSDocxRenderer
 
 	void CPage::CalcSelected()
 	{
-		// ~0.14 pt — small tracking so Recognize glyphs sit like the PDF, not stretched.
-		constexpr int kRecognizeSpacingHdthPt = 14;
+		// Minimal tracking (~0.06 pt). Only widen a box when the painted
+		// title/line would be clipped — do not stretch every line box.
+		constexpr int kRecognizeSpacingHdthPt = 6;
 		const double spacingMm = (kRecognizeSpacingHdthPt / 100.0) * c_dPtToMM;
 
 		for (auto& line : m_arTextLines)
@@ -656,12 +657,13 @@ namespace NSDocxRenderer
 						const double measured = cont->m_oSelectedSizes.dWidth;
 						if (measured > 0.5)
 						{
-							// Never grow the face past the PDF size — that clips titles
-							// inside a box that is still the original width.
 							double scale = cont->m_dWidth / measured;
-							if (scale < 0.97)
+							double applied = 1.0;
+							if (scale < 0.97 || scale > 1.03)
 							{
-								if (scale < 0.88) scale = 0.88;
+								if (scale < 0.92) scale = 0.92;
+								if (scale > 1.10) scale = 1.10;
+								applied = scale;
 								const double newSize = cont->m_pFontStyle->dFontSize * scale;
 								if (m_oManagers.pFontStyleManager)
 								{
@@ -673,29 +675,20 @@ namespace NSDocxRenderer
 									            cont->m_pFontStyle->bBold);
 								}
 								cont->m_oSelectedFont.Size = newSize;
-								painted = measured * scale;
 							}
-							else
-							{
-								painted = measured;
-							}
-						}
-						else
-						{
-							const double em = cont->m_pFontStyle->dFontSize * c_dPtToMM;
-							painted = std::max(painted, em * 0.52 * static_cast<double>(cont->GetLength()));
+							painted = measured * applied;
 						}
 					}
 
 					const double tracking = spacingMm * static_cast<double>(cont->GetLength());
-					const double need = painted + tracking + 1.2;
-					if (cont->m_dLeft + need > cont->m_dRight)
+					const double need = painted + tracking + 0.6;
+					if (need > cont->m_dWidth + 0.4)
 					{
 						cont->m_dRight = cont->m_dLeft + need;
 						cont->m_dWidth = cont->m_dRight - cont->m_dLeft;
+						if (cont->m_dRight > needRight)
+							needRight = cont->m_dRight;
 					}
-					if (cont->m_dRight > needRight)
-						needRight = cont->m_dRight;
 
 					cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
 					cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
@@ -709,8 +702,7 @@ namespace NSDocxRenderer
 			if (m_bUseDefaultFont && needRight > line->m_dRight + 0.3)
 			{
 				const double pageLimit = m_dWidth > 4.0 ? m_dWidth - 2.0 : needRight;
-				needRight = std::min(needRight, pageLimit);
-				line->m_dRight = needRight;
+				line->m_dRight = std::min(needRight, pageLimit);
 				line->m_dWidth = line->m_dRight - line->m_dLeft;
 			}
 		}
