@@ -654,8 +654,10 @@ namespace NSDocxRenderer
 
 				if (m_bUseDefaultFont && cont->m_pFontStyle && cont->GetLength() > 0 && cont->m_dWidth > 0.5)
 				{
-					// Same face on the box and the run. Fit size so the painted
-					// width matches this PDF line (9pt PDF + wider Arial → ~10pt).
+					// Same face on the box and the run. Never grow: Arial is
+					// wider than Calibri, so 11pt clips these PDF boxes (user:
+					// 11pt cuts; 9pt fits). Shrink if the run is wider than
+					// the box; body-sized runs stay at 9pt.
 					cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
 					cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
 					cont->m_oSelectedFont.Italic = cont->m_pFontStyle->bItalic;
@@ -667,26 +669,28 @@ namespace NSDocxRenderer
 					const double measured = cont->m_oSelectedSizes.dWidth;
 					if (measured > 0.5 && m_oManagers.pFontStyleManager)
 					{
-						double scale = layoutW / measured;
-						if (scale < 0.97 || scale > 1.03)
+						const double pdfSize = cont->m_pFontStyle->dFontSize;
+						double newSize = pdfSize;
+						if (measured > layoutW)
 						{
-							if (scale < 0.92) scale = 0.92;
-							if (scale > 1.12) scale = 1.12;
-							double newSize = cont->m_pFontStyle->dFontSize * scale;
-							newSize = std::round(newSize * 2.0) / 2.0;
+							newSize = pdfSize * (layoutW / measured);
 							if (newSize < 6.0) newSize = 6.0;
-							if (newSize > 36.0) newSize = 36.0;
-							if (fabs(newSize - cont->m_pFontStyle->dFontSize) > 0.12)
-							{
-								cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
-								            cont->m_pFontStyle->oBrush,
-								            cont->m_pFontStyle->wsFontName,
-								            newSize,
-								            cont->m_pFontStyle->bItalic,
-								            cont->m_pFontStyle->bBold);
-								cont->m_oSelectedFont.Size = newSize;
-								cont->CalcSelected();
-							}
+						}
+						if (newSize > 9.0 && newSize <= 13.0)
+							newSize = 9.0;
+						newSize = std::floor(newSize + 0.01);
+						if (newSize < 6.0) newSize = 6.0;
+						if (newSize > 36.0) newSize = 36.0;
+						if (fabs(newSize - pdfSize) > 0.12)
+						{
+							cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
+							            cont->m_pFontStyle->oBrush,
+							            cont->m_pFontStyle->wsFontName,
+							            newSize,
+							            cont->m_pFontStyle->bItalic,
+							            cont->m_pFontStyle->bBold);
+							cont->m_oSelectedFont.Size = newSize;
+							cont->CalcSelected();
 						}
 					}
 				}
