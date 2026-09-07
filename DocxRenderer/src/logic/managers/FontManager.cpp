@@ -6,6 +6,8 @@
 
 #include "../../resources/Constants.h"
 
+#include <cwchar>
+
 
 namespace NSDocxRenderer
 {
@@ -482,6 +484,48 @@ namespace NSDocxRenderer
 		if (CheckFontNameStyle(wsName, L"bold_italic")) { bBold = true; bItalic = true; }
 		if (CheckFontNameStyle(wsName, L"boldoblique")) { bBold = true; bItalic = true; }
 		if (CheckFontNameStyle(wsName, L"bold_oblique")) { bBold = true; bItalic = true; }
+	}
+
+	std::wstring CFontSelector::MapRecognizeOfficeFont(std::wstring wsName)
+	{
+		if (wsName.empty())
+			return wsName;
+
+		std::wstring low = wsName;
+		NSStringExt::ToLower(low);
+
+		auto endsWith = [&low] (const wchar_t* suffix) {
+			const size_t n = wcslen(suffix);
+			return low.size() >= n && low.compare(low.size() - n, n, suffix) == 0;
+		};
+		if (endsWith(L"psmt"))
+		{
+			wsName.erase(wsName.size() - 4);
+			low.erase(low.size() - 4);
+		}
+		else if (endsWith(L"-mt"))
+		{
+			wsName.erase(wsName.size() - 3);
+			low.erase(low.size() - 3);
+		}
+
+		auto has = [&low] (const wchar_t* token) {
+			return low.find(token) != std::wstring::npos;
+		};
+
+		if (has(L"times") || has(L"nimbusrom") || has(L"liberationserif") || has(L"liberation serif"))
+			return L"Times New Roman";
+		if (has(L"calibri") || has(L"carlito"))
+			return L"Calibri";
+		if (has(L"arial") || has(L"helvetica") || has(L"nimbussan") || has(L"liberationsans") || has(L"liberation sans"))
+			return L"Arial";
+		if (has(L"courier") || has(L"liberationmono") || has(L"nimbusmon"))
+			return L"Courier New";
+		if (has(L"cambria") || has(L"caladea"))
+			return L"Cambria";
+		if (has(L"georgia"))
+			return L"Georgia";
+		return wsName;
 	}
 	bool CFontSelector::CheckFontNameStyle(std::wstring& wsName, const std::wstring& sStyle)
 	{

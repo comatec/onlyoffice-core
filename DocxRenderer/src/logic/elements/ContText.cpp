@@ -1085,6 +1085,7 @@ namespace NSDocxRenderer
 		{
 			wsStyleFontName = oFont.Name;
 			m_pFontSelector->CheckFontNamePDF(wsStyleFontName, bStyleBold, bStyleItalic);
+			wsStyleFontName = CFontSelector::MapRecognizeOfficeFont(wsStyleFontName);
 			if (wsStyleFontName.empty())
 				wsStyleFontName = m_pFontSelector->GetSelectedName();
 			bStyleBold = bStyleBold || oParams.bDefaultBold || bForcedBold;

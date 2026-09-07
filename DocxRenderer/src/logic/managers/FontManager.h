@@ -89,6 +89,9 @@ namespace NSDocxRenderer
 		/** Strip PDF subset prefix (ABCDEF+) and style tags; detect bold/italic from the name. */
 		void CheckFontNamePDF(std::wstring& wsName, bool& bBold, bool& bItalic);
 
+		/** Map a stripped PDF face (TimesNewRomanPSMT, ArialMT, …) to a font the editor actually has. */
+		static std::wstring MapRecognizeOfficeFont(std::wstring wsName);
+
 		const std::list<CFontSelectInfo>& GetCache() const;
 		void ClearCache();
 

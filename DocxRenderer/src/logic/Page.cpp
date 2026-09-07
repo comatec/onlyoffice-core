@@ -632,8 +632,41 @@ namespace NSDocxRenderer
 				{
 					if (m_bUseDefaultFont)
 					{
+						// Substitute face is often narrower than the PDF advances, so the
+						// glyphs do not reach the right edge of the line box. Scale the
+						// emitted size (clamped) instead of letter-spacing the run.
+						if (cont->m_pFontStyle && !cont->m_oText.empty() && cont->m_dWidth > 0.5)
+						{
+							cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
+							cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
+							cont->m_oSelectedFont.Italic = cont->m_pFontStyle->bItalic;
+							cont->m_oSelectedFont.Size = cont->m_pFontStyle->dFontSize;
+							cont->m_oSelectedFont.Path = L"";
+							cont->CalcSelected();
+
+							const double measured = cont->m_oSelectedSizes.dWidth;
+							if (measured > 0.5)
+							{
+								double scale = cont->m_dWidth / measured;
+								if (scale < 0.97 || scale > 1.03)
+								{
+									if (scale < 0.92) scale = 0.92;
+									if (scale > 1.10) scale = 1.10;
+									const double newSize = cont->m_pFontStyle->dFontSize * scale;
+									if (m_oManagers.pFontStyleManager)
+									{
+										cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
+										            cont->m_pFontStyle->oBrush,
+										            cont->m_pFontStyle->wsFontName,
+										            newSize,
+										            cont->m_pFontStyle->bItalic,
+										            cont->m_pFontStyle->bBold);
+									}
+									cont->m_oSelectedFont.Size = newSize;
+								}
+							}
+						}
 						// Keep selected == layout width so run character-spacing stays 0.
-						// Justify must use word spacing (paragraph algn), not letter-spacing.
 						cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
 						cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
 					}
