@@ -632,8 +632,21 @@ namespace NSDocxRenderer
 				{
 					if (m_bUseDefaultFont)
 					{
-						cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
-						cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
+						// Measure with the typeface we emit (style name), not the embedded
+						// PDF path — so run-spacing matches what the editor will paint.
+						if (cont->m_pFontStyle)
+						{
+							cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
+							cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
+							cont->m_oSelectedFont.Italic = cont->m_pFontStyle->bItalic;
+						}
+						cont->m_oSelectedFont.Path = L"";
+						cont->CalcSelected();
+						if (cont->m_oSelectedSizes.dWidth <= 0.0)
+						{
+							cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
+							cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
+						}
 					}
 					else
 					{
@@ -1902,11 +1915,58 @@ namespace NSDocxRenderer
 		if (m_eTextAssociationType == TextAssociationType::tatPlainLine ||
 		        m_eTextAssociationType == TextAssociationType::tatShapeLine)
 		{
-			auto paragraph = std::make_shared<CParagraph>();
-			for (auto& curr_line : m_arTextLines)
+			// Per text-block column: detect left/right/center/justify for single-line shapes.
+			for (auto& g : arTextLineGroups)
 			{
-				add_line(paragraph, curr_line);
-				add_paragraph(paragraph);
+				if (!g || g->m_arItems.empty())
+					continue;
+
+				double colLeft = g->m_arItems.front()->m_dLeft;
+				double colRight = g->m_arItems.front()->m_dRight;
+				for (const auto& line : g->m_arItems)
+				{
+					if (!line) continue;
+					colLeft = std::min(colLeft, line->m_dLeft);
+					colRight = std::max(colRight, line->m_dRight);
+				}
+				const double colWidth = colRight - colLeft;
+				const double colCenter = colLeft + colWidth / 2.0;
+
+				for (auto& curr_line : g->m_arItems)
+				{
+					if (!curr_line) continue;
+
+					auto paragraph = std::make_shared<CParagraph>();
+					min_left = m_dWidth;
+					max_right = 0.0;
+					add_line(paragraph, curr_line);
+
+					const bool nearLeft = fabs(curr_line->m_dLeft - colLeft) < c_dERROR_OF_PARAGRAPH_BORDERS_MM;
+					const bool nearRight = fabs(curr_line->m_dRight - colRight) < c_dERROR_OF_PARAGRAPH_BORDERS_MM;
+					const double lineCenter = curr_line->m_dLeft + curr_line->m_dWidth / 2.0;
+					const bool nearCenter = fabs(lineCenter - colCenter) < c_dCENTER_POSITION_ERROR_MM;
+
+					// Widen to column so justify (both) has space to distribute.
+					if (nearLeft && nearRight)
+					{
+						min_left = colLeft;
+						max_right = colRight;
+					}
+
+					add_paragraph(paragraph);
+					if (ar_paragraphs.empty())
+						continue;
+
+					auto& p = ar_paragraphs.back();
+					if (nearLeft && nearRight)
+						p->m_eTextAlignmentType = CParagraph::tatByWidth;
+					else if (!nearLeft && nearRight)
+						p->m_eTextAlignmentType = CParagraph::tatByRight;
+					else if (!nearLeft && nearCenter)
+						p->m_eTextAlignmentType = CParagraph::tatByCenter;
+					else
+						p->m_eTextAlignmentType = CParagraph::tatByLeft;
+				}
 			}
 		}
 
