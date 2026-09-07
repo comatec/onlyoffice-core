@@ -15,6 +15,26 @@ to preserve visible content.
 exam PDFs often share dimensions and were incorrectly collapsed (missing /
 swapped graphics after save). That size-only pass was disabled.
 
+### PDF Recognize (Reconhecer) — font / layout
+
+Recognize runs in the browser via `drawingfile.wasm` (`ScanPage` mode 2 /
+`ScanPageBin`), not via `libPdfFile.so`. Upstream rewrote text into multi-line
+shapes and substituted system fonts (`CFontSelector::GetSelectedName()`), which
+changed typeface and spacing on clinical reports.
+
+Custom fixes on this branch:
+
+1. **Font** — when `bUseDefaultFont` (ScanPage), emit the stripped PDF font name
+   (+ bold/italic from the name) instead of the system substitute.
+2. **Layout** — use `tatShapeLine` (one text box per visual line) instead of
+   `tatParagraphToShape`.
+3. **Spacing** — do not force-shrink run spacing on ScanPage (`WriteStyleRaw`).
+
+**Deploy note:** rebuilding only `libPdfFile.so` is **not** enough for Recognize.
+You must rebuild and install `sdkjs/pdf/src/engine/drawingfile.wasm` (+ `.js`)
+into the Document Server image (see `Dockerfile.documentserver`). Until that
+WASM is rebuilt, the editor still runs the old Recognize.
+
 ## Core
 Server core components which are a part of [ONLYOFFICE Document Server][2] and [ONLYOFFICE Desktop Editors][4]. Enable the conversion between the most popular office document formats: DOC, DOCX, ODT, RTF, TXT, PDF, HTML, EPUB, XPS, DjVu, XLS, XLSX, ODS, CSV, PPT, PPTX, ODP.
 

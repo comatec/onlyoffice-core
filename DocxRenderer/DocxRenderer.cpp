@@ -129,6 +129,8 @@ std::vector<std::wstring> CDocxRenderer::ScanPage(IOfficeDrawingFile* pFile, siz
 	m_pInternal->m_oDocument.Init(false);
 	m_pInternal->m_oDocument.m_oCurrentPage.m_bUseDefaultFont = true;
 	m_pInternal->m_oDocument.m_oCurrentPage.m_bWriteStyleRaw = true;
+	// Prefer one shape per line for editable PDF text (less overlap than paragraph boxes).
+	m_pInternal->m_oDocument.m_oCurrentPage.m_eTextAssociationType = NSDocxRenderer::TextAssociationType::tatShapeLine;
 	m_pInternal->m_bIsSupportShapeCommands = false;
 
 	DrawPage(pFile, nPage);
@@ -144,6 +146,7 @@ std::vector<std::wstring> CDocxRenderer::ScanPagePptx(IOfficeDrawingFile* pFile,
 	m_pInternal->m_oDocument.Init(false);
 	m_pInternal->m_oDocument.m_oCurrentPage.m_bUseDefaultFont = true;
 	m_pInternal->m_oDocument.m_oCurrentPage.m_bWriteStyleRaw = true;
+	m_pInternal->m_oDocument.m_oCurrentPage.m_eTextAssociationType = NSDocxRenderer::TextAssociationType::tatShapeLine;
 	m_pInternal->m_bIsSupportShapeCommands = true;
 
 	m_pInternal->m_eShapeSerializeType = ShapeSerializeType::sstXml;
@@ -160,6 +163,8 @@ NSWasm::CData CDocxRenderer::ScanPageBin(IOfficeDrawingFile* pFile, size_t nPage
 	m_pInternal->m_oDocument.Init(false);
 	m_pInternal->m_oDocument.m_oCurrentPage.m_bUseDefaultFont = true;
 	m_pInternal->m_oDocument.m_oCurrentPage.m_bWriteStyleRaw = true;
+	// Editor Recognize uses mode 2 (ScanPageBin). One shape per line preserves layout/fonts better.
+	m_pInternal->m_oDocument.m_oCurrentPage.m_eTextAssociationType = NSDocxRenderer::TextAssociationType::tatShapeLine;
 	m_pInternal->m_bIsSupportShapeCommands = true;
 
 	DrawPage(pFile, nPage);

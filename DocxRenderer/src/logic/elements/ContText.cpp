@@ -238,8 +238,9 @@ namespace NSDocxRenderer
 			lCalculatedSpacing = static_cast<LONG>(dSpacing);
 		}
 
-		// принудительно уменьшаем spacing чтобы текстовые линии не выходили за правую границу
-		lCalculatedSpacing -= 1;
+		// ScanPage keeps original glyph widths — do not force-shrink (causes overlap after save).
+		if (!m_bWriteStyleRaw)
+			lCalculatedSpacing -= 1;
 
 		if (lCalculatedSpacing != 0)
 		{
@@ -373,8 +374,8 @@ namespace NSDocxRenderer
 			lCalculatedSpacing = static_cast<LONG>(dSpacing);
 		}
 
-		// принудительно уменьшаем spacing чтобы текстовые линии не выходили за правую границу
-		lCalculatedSpacing -= 15;
+		if (!m_bWriteStyleRaw)
+			lCalculatedSpacing -= 15;
 
 		oWriter.WriteString(L" spc=\"");
 		oWriter.AddInt(lCalculatedSpacing);
@@ -499,7 +500,8 @@ namespace NSDocxRenderer
 			dSpacing *= c_dMMToPt * 100;
 			lCalculatedSpacing = static_cast<LONG>(dSpacing);
 		}
-		lCalculatedSpacing -= 15;
+		if (!m_bWriteStyleRaw)
+			lCalculatedSpacing -= 15;
 
 		const BYTE kPARRUN_TYPE_RUN = 1;
 		oWriter.StartRecord(kPARRUN_TYPE_RUN);
@@ -1076,14 +1078,35 @@ namespace NSDocxRenderer
 		pCont->m_dHeight = dHeight;
 		pCont->m_dLeft   = dLeft;
 
+		// Style typeface: ScanPage (bUseDefaultFont) keeps the PDF font name
+		// (stripped) instead of the system substitute from SelectFont.
+		std::wstring wsStyleFontName;
+		bool bStyleItalic = false;
+		bool bStyleBold = false;
+		if (bUseDefaultFont)
+		{
+			wsStyleFontName = oFont.Name;
+			m_pFontSelector->CheckFontNamePDF(wsStyleFontName, bStyleBold, bStyleItalic);
+			if (wsStyleFontName.empty())
+				wsStyleFontName = m_pFontSelector->GetSelectedName();
+			bStyleBold = bStyleBold || oParams.bDefaultBold || bForcedBold;
+			bStyleItalic = bStyleItalic || oParams.bDefaultItalic;
+		}
+		else
+		{
+			wsStyleFontName = m_pFontSelector->GetSelectedName();
+			bStyleItalic = m_pFontSelector->IsSelectedItalic();
+			bStyleBold = m_pFontSelector->IsSelectedBold() || bForcedBold;
+		}
+
 		// первичное получение стиля для текущего символа
 		// при дальнейшем анализе может измениться
 		pCont->m_pFontStyle = m_pFontStyleManager->GetOrAddFontStyle(
 		            oBrush,
-		            m_pFontSelector->GetSelectedName(),
+		            wsStyleFontName,
 		            oFont.Size,
-		            m_pFontSelector->IsSelectedItalic(),
-		            m_pFontSelector->IsSelectedBold() || bForcedBold);
+		            bStyleItalic,
+		            bStyleBold);
 
 		// just in case if oText contains more than 1 symbol
 		std::vector<double> ar_widths;

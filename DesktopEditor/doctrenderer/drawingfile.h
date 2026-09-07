@@ -450,7 +450,9 @@ public:
 
 		CDocxRenderer oRenderer(m_pApplicationFonts);
 		oRenderer.SetExternalImageStorage(m_pImageStorage);
-		oRenderer.SetTextAssociationType(NSDocxRenderer::TextAssociationType::tatParagraphToShape);
+		// One shape per visual line — preserves report layout better than
+		// tatParagraphToShape (multi-line boxes + averaged exact line spacing).
+		oRenderer.SetTextAssociationType(NSDocxRenderer::TextAssociationType::tatShapeLine);
 
 		NSWasm::CData oRes;
 		switch (mode)

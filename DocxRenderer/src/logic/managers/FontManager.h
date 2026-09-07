@@ -86,6 +86,9 @@ namespace NSDocxRenderer
 		bool IsSelectedBold() const noexcept;
 		bool IsSelectedItalic() const noexcept;
 
+		/** Strip PDF subset prefix (ABCDEF+) and style tags; detect bold/italic from the name. */
+		void CheckFontNamePDF(std::wstring& wsName, bool& bBold, bool& bItalic);
+
 		const std::list<CFontSelectInfo>& GetCache() const;
 		void ClearCache();
 
@@ -100,7 +103,6 @@ namespace NSDocxRenderer
 		CUnicodeRanges m_oRanges;
 		void CheckRanges(UINT& lRange1, UINT& lRange2, UINT& lRange3, UINT& lRange4, BYTE& lRangeNum, BYTE& lRange);
 
-		void CheckFontNamePDF(std::wstring& wsName, bool& bBold, bool& bItalic);
 		bool CheckFontNameStyle(std::wstring& wsName, const std::wstring& sStyle);
 	};
 
