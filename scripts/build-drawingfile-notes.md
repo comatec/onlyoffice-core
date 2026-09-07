@@ -24,7 +24,11 @@ parent/
 3. From `DesktopEditor/graphics/pro/js`:
    `python3 deploy.py`
 4. Copy `deploy/drawingfile.js` + `deploy/drawingfile.wasm` into the
-   Document Server image path above (and rebuild `onlyoffice-pdf-hotfix:9.2.1`).
+   Document Server image path above (and rebuild `sysclinicas-onlyoffice:9.2.1-writenew`).
+
+Each Sysclinicas compile is versioned (`recognize-wasm-vN`). See
+`scripts/recognize-wasm-versions.md` and keep Docker tag
+`sysclinicas-onlyoffice:recognize-vN` so a previous build can be restored.
 
 First WASM build downloads emsdk and compiles a large tree — expect a long run.
 
