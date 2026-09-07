@@ -6,13 +6,6 @@
 
 namespace NSDocxRenderer
 {
-	static double RecognizeEmitFontPt(double dFontSize, bool bWriteStyleRaw)
-	{
-		if (bWriteStyleRaw && dFontSize >= 8.0 && dFontSize <= 11.6)
-			return 10.0;
-		return dFontSize;
-	}
-
 	CSelectedSizes::CSelectedSizes(const CSelectedSizes& oSelectedSizes)
 	{
 		*this = oSelectedSizes;
@@ -319,7 +312,7 @@ namespace NSDocxRenderer
 		}
 		else if (m_bWriteStyleRaw)
 		{
-			int lSize = static_cast<int>(2.0 * RecognizeEmitFontPt(m_pFontStyle->dFontSize, true));
+			int lSize = static_cast<int>(2.0 * m_pFontStyle->dFontSize + 0.5);
 			oWriter.WriteString(L"<w:sz w:val=\"");
 			oWriter.AddInt(lSize);
 			oWriter.WriteString(L"\"/><w:szCs w:val=\"");
@@ -413,7 +406,7 @@ namespace NSDocxRenderer
 		if (m_eVertAlignType == eVertAlignType::vatSubscript || m_eVertAlignType == eVertAlignType::vatSuperscript)
 			lSize = static_cast<int>(1.5 * m_pFontStyle->dFontSize) * 100;
 		else if (m_bWriteStyleRaw)
-			lSize = static_cast<int>(RecognizeEmitFontPt(m_pFontStyle->dFontSize, true) + 0.5) * 100;
+			lSize = static_cast<int>(m_pFontStyle->dFontSize + 0.5) * 100;
 
 		oWriter.WriteString(L" sz=\"");
 		oWriter.AddUInt(lSize);
@@ -535,7 +528,7 @@ namespace NSDocxRenderer
 			oWriter.WriteBYTE(16); oWriter.WriteBYTE(strike);
 			oWriter.WriteBYTE(15); oWriter.AddSInt(lCalculatedSpacing);
 			oWriter.WriteBYTE(18); oWriter.WriteBYTE(m_bIsUnderlinePresent ? 13 : 12);
-			unsigned int font_size = static_cast<unsigned int>(RecognizeEmitFontPt(m_pFontStyle->dFontSize, m_bWriteStyleRaw) + 0.5) * 100;
+			unsigned int font_size = static_cast<unsigned int>(m_pFontStyle->dFontSize + 0.5) * 100;
 			const unsigned int min_font_size = 100;
 			oWriter.WriteBYTE(17); oWriter.AddInt(std::max(font_size, std::max(font_size, min_font_size)));
 
@@ -1098,9 +1091,14 @@ namespace NSDocxRenderer
 		{
 			wsStyleFontName = oFont.Name;
 			m_pFontSelector->CheckFontNamePDF(wsStyleFontName, bStyleBold, bStyleItalic);
-			wsStyleFontName = CFontSelector::MapRecognizeOfficeFont(wsStyleFontName);
-			if (wsStyleFontName.empty())
-				wsStyleFontName = m_pFontSelector->GetSelectedName();
+			const std::wstring wsMapped = CFontSelector::MapRecognizeOfficeFont(wsStyleFontName);
+			const std::wstring wsSelected = m_pFontSelector->GetSelectedName();
+			// One face for box + run: prefer the installed substitute the editor
+			// will actually paint, then the mapped PDF family.
+			if (!wsSelected.empty())
+				wsStyleFontName = wsSelected;
+			else if (!wsMapped.empty())
+				wsStyleFontName = wsMapped;
 			bStyleBold = bStyleBold || oParams.bDefaultBold || bForcedBold;
 			bStyleItalic = bStyleItalic || oParams.bDefaultItalic;
 		}

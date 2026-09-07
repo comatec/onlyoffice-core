@@ -1,5 +1,6 @@
 #include "Page.h"
 
+#include <cmath>
 #include <memory>
 #include <map>
 #include <set>
@@ -625,11 +626,11 @@ namespace NSDocxRenderer
 
 	void CPage::CalcSelected()
 	{
-		// Recognize: keep each line's left (tab). Body face ~10 pt. Then
-		// give every non-centered line the same column right so boxes match.
+		// Recognize: keep each line's left (tab). Size is fitted per run from
+		// the PDF box vs the substitute face (not a fixed pt). Then give every
+		// non-centered line the same column right so boxes match.
 		constexpr int kRecognizeSpacingHdthPt = 6;
 		const double spacingMm = (kRecognizeSpacingHdthPt / 100.0) * c_dPtToMM;
-		constexpr double kBodyFontPt = 10.0;
 
 		auto isCenteredLine = [this] (const text_line_ptr_t& line) -> bool {
 			if (!line || m_dWidth < 10.0)
@@ -651,41 +652,58 @@ namespace NSDocxRenderer
 				if (!cont)
 					continue;
 
-				if (m_bUseDefaultFont && cont->m_pFontStyle && m_oManagers.pFontStyleManager)
+				if (m_bUseDefaultFont && cont->m_pFontStyle && cont->GetLength() > 0 && cont->m_dWidth > 0.5)
 				{
-					const double sz = cont->m_pFontStyle->dFontSize;
-					if (sz >= 8.0 && sz <= 11.6 && fabs(sz - kBodyFontPt) > 0.12)
+					// Same face on the box and the run. Fit size so the painted
+					// width matches this PDF line (9pt PDF + wider Arial → ~10pt).
+					cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
+					cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
+					cont->m_oSelectedFont.Italic = cont->m_pFontStyle->bItalic;
+					cont->m_oSelectedFont.Size = cont->m_pFontStyle->dFontSize;
+					cont->m_oSelectedFont.Path = L"";
+					cont->CalcSelected();
+
+					const double layoutW = cont->m_dWidth;
+					const double measured = cont->m_oSelectedSizes.dWidth;
+					if (measured > 0.5 && m_oManagers.pFontStyleManager)
 					{
-						cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
-						            cont->m_pFontStyle->oBrush,
-						            cont->m_pFontStyle->wsFontName,
-						            kBodyFontPt,
-						            cont->m_pFontStyle->bItalic,
-						            cont->m_pFontStyle->bBold);
+						double scale = layoutW / measured;
+						if (scale < 0.97 || scale > 1.03)
+						{
+							if (scale < 0.90) scale = 0.90;
+							if (scale > 1.18) scale = 1.18;
+							double newSize = cont->m_pFontStyle->dFontSize * scale;
+							newSize = std::round(newSize * 2.0) / 2.0;
+							if (newSize < 6.0) newSize = 6.0;
+							if (newSize > 36.0) newSize = 36.0;
+							if (fabs(newSize - cont->m_pFontStyle->dFontSize) > 0.12)
+							{
+								cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
+								            cont->m_pFontStyle->oBrush,
+								            cont->m_pFontStyle->wsFontName,
+								            newSize,
+								            cont->m_pFontStyle->bItalic,
+								            cont->m_pFontStyle->bBold);
+								cont->m_oSelectedFont.Size = newSize;
+								cont->CalcSelected();
+							}
+						}
 					}
 				}
 
-				if (cont->m_oSelectedSizes.dHeight != 0.0 || cont->m_oSelectedSizes.dWidth != 0.0)
-					continue;
-
-				if (m_bUseDefaultFont)
+				if (!m_bUseDefaultFont)
 				{
-					double painted = cont->m_dWidth;
-					double fontMm = 3.5;
-					if (cont->m_pFontStyle && cont->GetLength() > 0 && cont->m_dWidth > 0.5)
-					{
-						fontMm = std::max(2.0, cont->m_pFontStyle->dFontSize * c_dPtToMM);
-						cont->m_oSelectedFont.Name = cont->m_pFontStyle->wsFontName;
-						cont->m_oSelectedFont.Bold = cont->m_pFontStyle->bBold;
-						cont->m_oSelectedFont.Italic = cont->m_pFontStyle->bItalic;
-						cont->m_oSelectedFont.Size = cont->m_pFontStyle->dFontSize;
-						cont->m_oSelectedFont.Path = L"";
+					if (cont->m_oSelectedSizes.dHeight == 0.0 && cont->m_oSelectedSizes.dWidth == 0.0)
 						cont->CalcSelected();
+					continue;
+				}
 
-						const double measured = cont->m_oSelectedSizes.dWidth;
-						if (measured > 0.5)
-							painted = measured;
-					}
+				{
+					const double fittedPainted = cont->m_oSelectedSizes.dWidth;
+					double painted = fittedPainted > 0.5 ? fittedPainted : cont->m_dWidth;
+					double fontMm = 3.5;
+					if (cont->m_pFontStyle)
+						fontMm = std::max(2.0, cont->m_pFontStyle->dFontSize * c_dPtToMM);
 
 					const double tracking = spacingMm * static_cast<double>(cont->GetLength());
 					const double charW = fontMm * 0.50;
@@ -703,10 +721,6 @@ namespace NSDocxRenderer
 
 					cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
 					cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
-				}
-				else
-				{
-					cont->CalcSelected();
 				}
 			}
 
