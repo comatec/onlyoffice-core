@@ -631,6 +631,16 @@ namespace NSDocxRenderer
 		// non-centered line the same column right so boxes match.
 		constexpr int kRecognizeSpacingHdthPt = 6;
 		const double spacingMm = (kRecognizeSpacingHdthPt / 100.0) * c_dPtToMM;
+		// Arial is wider than Calibri; a 2 mm page gutter clipped "min",
+		// INTERPRETAÇÃO and the last words of CONCLUSÃO.
+		constexpr double kPageMarginMm = 0.55;
+
+		auto pageRightLimit = [this, kPageMarginMm] () -> double {
+			return m_dWidth > 4.0 ? m_dWidth - kPageMarginMm : m_dWidth;
+		};
+		auto pageLeftLimit = [kPageMarginMm] () -> double {
+			return kPageMarginMm;
+		};
 
 		auto isCenteredLine = [this] (const text_line_ptr_t& line) -> bool {
 			if (!line || m_dWidth < 10.0)
@@ -646,6 +656,7 @@ namespace NSDocxRenderer
 				continue;
 
 			double needRight = line->m_dRight;
+			double needLeft = line->m_dLeft;
 
 			for (auto& cont : line->m_arConts)
 			{
@@ -711,26 +722,56 @@ namespace NSDocxRenderer
 
 					const double tracking = spacingMm * static_cast<double>(cont->GetLength());
 					const double charW = fontMm * 0.50;
-					const double need = painted + tracking + charW * 0.4;
-					if (need > cont->m_dWidth + 0.15)
+					// ~2.5 letters: enough for " min" / the last "O" without
+					// stretching the whole column.
+					const double padMm = charW * 2.6;
+					const double needW = std::max(cont->m_dWidth, painted + tracking) + padMm;
+					const double limitL = pageLeftLimit();
+					const double limitR = pageRightLimit();
+
+					if (isCenteredLine(line))
 					{
-						cont->m_dRight = cont->m_dLeft + need;
-						const double pageLimit = m_dWidth > 4.0 ? m_dWidth - 2.0 : cont->m_dRight;
-						if (cont->m_dRight > pageLimit)
-							cont->m_dRight = pageLimit;
-						cont->m_dWidth = cont->m_dRight - cont->m_dLeft;
-						if (cont->m_dRight > needRight)
-							needRight = cont->m_dRight;
+						const double center = cont->m_dLeft + cont->m_dWidth / 2.0;
+						double newLeft = center - needW / 2.0;
+						double newRight = center + needW / 2.0;
+						if (newLeft < limitL)
+						{
+							newRight += (limitL - newLeft);
+							newLeft = limitL;
+						}
+						if (newRight > limitR)
+							newRight = limitR;
+						cont->m_dLeft = newLeft;
+						cont->m_dRight = newRight;
+						cont->m_dWidth = newRight - newLeft;
+						if (newLeft < needLeft)
+							needLeft = newLeft;
 					}
+					else
+					{
+						double newRight = cont->m_dLeft + needW;
+						if (newRight > limitR)
+							newRight = limitR;
+						if (newRight > cont->m_dRight + 0.05)
+						{
+							cont->m_dRight = newRight;
+							cont->m_dWidth = cont->m_dRight - cont->m_dLeft;
+						}
+					}
+					if (cont->m_dRight > needRight)
+						needRight = cont->m_dRight;
 
 					cont->m_oSelectedSizes.dHeight = cont->m_dHeight;
 					cont->m_oSelectedSizes.dWidth = cont->m_dWidth;
 				}
 			}
 
-			if (m_bUseDefaultFont && needRight > line->m_dRight + 0.15)
+			if (m_bUseDefaultFont)
 			{
-				line->m_dRight = needRight;
+				if (needLeft + 0.05 < line->m_dLeft)
+					line->m_dLeft = needLeft;
+				if (needRight > line->m_dRight + 0.05)
+					line->m_dRight = needRight;
 				line->m_dWidth = line->m_dRight - line->m_dLeft;
 			}
 		}
@@ -758,7 +799,7 @@ namespace NSDocxRenderer
 					colRight = std::max(colRight, line->m_dRight);
 			}
 		}
-		const double pageLimit = m_dWidth > 4.0 ? m_dWidth - 2.0 : colRight;
+		const double pageLimit = pageRightLimit();
 		if (colRight > pageLimit)
 			colRight = pageLimit;
 
@@ -789,11 +830,11 @@ namespace NSDocxRenderer
 			{
 				if (!line)
 					continue;
-				if (line->m_dRight > paragraph->m_dRight + 0.15)
-				{
+				if (line->m_dLeft + 0.05 < paragraph->m_dLeft)
+					paragraph->m_dLeft = line->m_dLeft;
+				if (line->m_dRight > paragraph->m_dRight + 0.05)
 					paragraph->m_dRight = line->m_dRight;
-					paragraph->m_dWidth = paragraph->m_dRight - paragraph->m_dLeft;
-				}
+				paragraph->m_dWidth = paragraph->m_dRight - paragraph->m_dLeft;
 			}
 		}
 	}
