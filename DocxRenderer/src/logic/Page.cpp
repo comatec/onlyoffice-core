@@ -648,25 +648,28 @@ namespace NSDocxRenderer
 
 			for (auto& cont : line->m_arConts)
 			{
-				if (!cont || cont->m_oSelectedSizes.dHeight != 0.0 || cont->m_oSelectedSizes.dWidth != 0.0)
+				if (!cont)
+					continue;
+
+				if (m_bUseDefaultFont && cont->m_pFontStyle && m_oManagers.pFontStyleManager)
+				{
+					const double sz = cont->m_pFontStyle->dFontSize;
+					if (sz >= 8.0 && sz <= 11.6 && fabs(sz - kBodyFontPt) > 0.12)
+					{
+						cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
+						            cont->m_pFontStyle->oBrush,
+						            cont->m_pFontStyle->wsFontName,
+						            kBodyFontPt,
+						            cont->m_pFontStyle->bItalic,
+						            cont->m_pFontStyle->bBold);
+					}
+				}
+
+				if (cont->m_oSelectedSizes.dHeight != 0.0 || cont->m_oSelectedSizes.dWidth != 0.0)
 					continue;
 
 				if (m_bUseDefaultFont)
 				{
-					if (cont->m_pFontStyle && m_oManagers.pFontStyleManager)
-					{
-						const double sz = cont->m_pFontStyle->dFontSize;
-						if (sz >= 8.0 && sz <= 11.6 && fabs(sz - kBodyFontPt) > 0.12)
-						{
-							cont->m_pFontStyle = m_oManagers.pFontStyleManager->GetOrAddFontStyle(
-							            cont->m_pFontStyle->oBrush,
-							            cont->m_pFontStyle->wsFontName,
-							            kBodyFontPt,
-							            cont->m_pFontStyle->bItalic,
-							            cont->m_pFontStyle->bBold);
-						}
-					}
-
 					double painted = cont->m_dWidth;
 					double fontMm = 3.5;
 					if (cont->m_pFontStyle && cont->GetLength() > 0 && cont->m_dWidth > 0.5)
