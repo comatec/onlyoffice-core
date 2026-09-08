@@ -650,6 +650,12 @@ namespace NSDocxRenderer
 			return fabs(lineCenter - pageCenter) < 16.0;
 		};
 
+		// Wide left-aligned lines also have their midpoint near the page
+		// center. Only short/medium runs are real centered blocks (CONCLUSÃO).
+		auto isCenteredBlock = [this, &isCenteredOnPage] (const text_line_ptr_t& line) -> bool {
+			return isCenteredOnPage(line) && line->m_dWidth < m_dWidth * 0.58;
+		};
+
 		auto lineTextLen = [] (const text_line_ptr_t& line) -> size_t {
 			size_t n = 0;
 			if (!line)
@@ -664,12 +670,10 @@ namespace NSDocxRenderer
 
 		// Short headings only (CONCLUSÃO, INTERPRETAÇÃO). Centered body
 		// lines of the conclusion must use the same column as the report.
-		auto isShortCenteredTitle = [this, &lineTextLen, &isCenteredOnPage] (const text_line_ptr_t& line) -> bool {
+		auto isShortCenteredTitle = [this, &lineTextLen, &isCenteredBlock] (const text_line_ptr_t& line) -> bool {
 			if (!line || m_dWidth < 10.0)
 				return false;
-			const double pageCenter = m_dWidth / 2.0;
-			const double lineCenter = line->m_dLeft + line->m_dWidth / 2.0;
-			return isCenteredOnPage(line)
+			return isCenteredBlock(line)
 			        && line->m_dWidth < m_dWidth * 0.40
 			        && lineTextLen(line) <= 18;
 		};
@@ -836,14 +840,18 @@ namespace NSDocxRenderer
 
 		if (colRight > 20.0)
 		{
+			std::vector<text_line_ptr_t> centeredBodyLines;
 			for (auto& line : m_arTextLines)
 			{
 				if (!line || isShortCenteredTitle(line))
 					continue;
+				const bool centeredBlock = isCenteredBlock(line);
+				if (centeredBlock)
+					centeredBodyLines.push_back(line);
 				bool changed = false;
-				// Pull left only on centered body (CONCLUSÃO lines). Left-aligned
-				// first-line tabs must keep their indent.
-				if (isCenteredOnPage(line) && line->m_dLeft > colLeft + 0.4)
+				// Pull left only on real centered blocks (CONCLUSÃO), not on
+				// full-width body whose midpoint happens to sit near center.
+				if (centeredBlock && line->m_dLeft > colLeft + 0.4)
 				{
 					line->m_dLeft = colLeft;
 					changed = true;
@@ -867,6 +875,25 @@ namespace NSDocxRenderer
 				}
 				if (changed)
 					line->m_dWidth = line->m_dRight - line->m_dLeft;
+			}
+
+			for (auto& paragraph : m_arParagraphs)
+			{
+				if (!paragraph)
+					continue;
+				for (auto& line : paragraph->m_arTextLines)
+				{
+					if (!line)
+						continue;
+					for (const auto& cb : centeredBodyLines)
+					{
+						if (cb == line)
+						{
+							paragraph->m_eTextAlignmentType = CParagraph::tatByCenter;
+							break;
+						}
+					}
+				}
 			}
 		}
 
