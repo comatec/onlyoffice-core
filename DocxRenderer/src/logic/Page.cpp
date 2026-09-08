@@ -642,6 +642,14 @@ namespace NSDocxRenderer
 			return kPageMarginMm;
 		};
 
+		auto isCenteredOnPage = [this] (const text_line_ptr_t& line) -> bool {
+			if (!line || m_dWidth < 10.0)
+				return false;
+			const double pageCenter = m_dWidth / 2.0;
+			const double lineCenter = line->m_dLeft + line->m_dWidth / 2.0;
+			return fabs(lineCenter - pageCenter) < 16.0;
+		};
+
 		auto lineTextLen = [] (const text_line_ptr_t& line) -> size_t {
 			size_t n = 0;
 			if (!line)
@@ -656,12 +664,12 @@ namespace NSDocxRenderer
 
 		// Short headings only (CONCLUSÃO, INTERPRETAÇÃO). Centered body
 		// lines of the conclusion must use the same column as the report.
-		auto isShortCenteredTitle = [this, &lineTextLen] (const text_line_ptr_t& line) -> bool {
+		auto isShortCenteredTitle = [this, &lineTextLen, &isCenteredOnPage] (const text_line_ptr_t& line) -> bool {
 			if (!line || m_dWidth < 10.0)
 				return false;
 			const double pageCenter = m_dWidth / 2.0;
 			const double lineCenter = line->m_dLeft + line->m_dWidth / 2.0;
-			return fabs(lineCenter - pageCenter) < 16.0
+			return isCenteredOnPage(line)
 			        && line->m_dWidth < m_dWidth * 0.40
 			        && lineTextLen(line) <= 18;
 		};
@@ -833,7 +841,9 @@ namespace NSDocxRenderer
 				if (!line || isShortCenteredTitle(line))
 					continue;
 				bool changed = false;
-				if (line->m_dLeft > colLeft + 0.4)
+				// Pull left only on centered body (CONCLUSÃO lines). Left-aligned
+				// first-line tabs must keep their indent.
+				if (isCenteredOnPage(line) && line->m_dLeft > colLeft + 0.4)
 				{
 					line->m_dLeft = colLeft;
 					changed = true;
