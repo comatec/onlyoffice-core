@@ -642,12 +642,28 @@ namespace NSDocxRenderer
 			return kPageMarginMm;
 		};
 
-		auto isCenteredLine = [this] (const text_line_ptr_t& line) -> bool {
+		auto lineTextLen = [] (const text_line_ptr_t& line) -> size_t {
+			size_t n = 0;
+			if (!line)
+				return 0;
+			for (const auto& c : line->m_arConts)
+			{
+				if (c)
+					n += c->GetLength();
+			}
+			return n;
+		};
+
+		// Short headings only (CONCLUSÃO, INTERPRETAÇÃO). Centered body
+		// lines of the conclusion must use the same column as the report.
+		auto isShortCenteredTitle = [this, &lineTextLen] (const text_line_ptr_t& line) -> bool {
 			if (!line || m_dWidth < 10.0)
 				return false;
 			const double pageCenter = m_dWidth / 2.0;
 			const double lineCenter = line->m_dLeft + line->m_dWidth / 2.0;
-			return fabs(lineCenter - pageCenter) < 16.0 && line->m_dWidth < m_dWidth * 0.58;
+			return fabs(lineCenter - pageCenter) < 16.0
+			        && line->m_dWidth < m_dWidth * 0.40
+			        && lineTextLen(line) <= 18;
 		};
 
 		for (auto& line : m_arTextLines)
@@ -729,7 +745,7 @@ namespace NSDocxRenderer
 					const double limitL = pageLeftLimit();
 					const double limitR = pageRightLimit();
 
-					if (isCenteredLine(line))
+					if (isShortCenteredTitle(line))
 					{
 						const double center = cont->m_dLeft + cont->m_dWidth / 2.0;
 						double newLeft = center - needW / 2.0;
@@ -780,14 +796,16 @@ namespace NSDocxRenderer
 			return;
 
 		double colRight = 0.0;
+		double colLeft = m_dWidth;
 		int nLong = 0;
 		for (const auto& line : m_arTextLines)
 		{
-			if (!line || isCenteredLine(line))
+			if (!line || isShortCenteredTitle(line))
 				continue;
 			if (line->m_dWidth > 50.0 && line->m_dRight > m_dWidth * 0.60)
 			{
 				colRight = std::max(colRight, line->m_dRight);
+				colLeft = std::min(colLeft, line->m_dLeft);
 				++nLong;
 			}
 		}
@@ -795,30 +813,50 @@ namespace NSDocxRenderer
 		{
 			for (const auto& line : m_arTextLines)
 			{
-				if (line && !isCenteredLine(line))
+				if (line && !isShortCenteredTitle(line))
+				{
 					colRight = std::max(colRight, line->m_dRight);
+					colLeft = std::min(colLeft, line->m_dLeft);
+				}
 			}
 		}
 		const double pageLimit = pageRightLimit();
 		if (colRight > pageLimit)
 			colRight = pageLimit;
+		if (colLeft < pageLeftLimit())
+			colLeft = pageLeftLimit();
 
 		if (colRight > 20.0)
 		{
 			for (auto& line : m_arTextLines)
 			{
-				if (!line || isCenteredLine(line))
+				if (!line || isShortCenteredTitle(line))
 					continue;
-				if (line->m_dRight + 0.4 >= colRight)
-					continue;
-				line->m_dRight = colRight;
-				line->m_dWidth = line->m_dRight - line->m_dLeft;
-				if (!line->m_arConts.empty() && line->m_arConts.back())
+				bool changed = false;
+				if (line->m_dLeft > colLeft + 0.4)
 				{
-					auto& last = line->m_arConts.back();
-					last->m_dRight = line->m_dRight;
-					last->m_dWidth = last->m_dRight - last->m_dLeft;
+					line->m_dLeft = colLeft;
+					changed = true;
+					if (!line->m_arConts.empty() && line->m_arConts.front())
+					{
+						auto& first = line->m_arConts.front();
+						first->m_dLeft = line->m_dLeft;
+						first->m_dWidth = first->m_dRight - first->m_dLeft;
+					}
 				}
+				if (line->m_dRight + 0.4 < colRight)
+				{
+					line->m_dRight = colRight;
+					changed = true;
+					if (!line->m_arConts.empty() && line->m_arConts.back())
+					{
+						auto& last = line->m_arConts.back();
+						last->m_dRight = line->m_dRight;
+						last->m_dWidth = last->m_dRight - last->m_dLeft;
+					}
+				}
+				if (changed)
+					line->m_dWidth = line->m_dRight - line->m_dLeft;
 			}
 		}
 
